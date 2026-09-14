@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>アルペンスキー 外向・外傾 3Dトレーナー</title>
+<meta name="description" content="アルペンスキーのターンにおける外向（骨盤のひねり）・外傾・内傾を、骨盤の骨を色分けした3Dモデルと力のベクトルで学ぶ指導用ツール。SL/GSの2パターン、一人称・三人称視点に対応。" />
+<link rel="stylesheet" href="./styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.0/three.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+  <div id="labels" aria-hidden="true"></div>
+
+  <!-- ===== 上部バー ===== -->
+  <header id="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">⛷</span>
+      <span class="titles">
+        <strong>外向・外傾 3Dトレーナー</strong>
+        <small>骨盤を中心に見るアルペンターン</small>
+      </span>
+    </div>
+
+    <div class="topgroup" role="group" aria-label="種目">
+      <button class="seg" data-discipline="SL" aria-pressed="true">スラローム<small>SL</small></button>
+      <button class="seg" data-discipline="GS" aria-pressed="false">大回転<small>GS</small></button>
+    </div>
+
+    <div class="topgroup" role="group" aria-label="視点">
+      <button class="seg" data-view="third" aria-pressed="true">三人称</button>
+      <button class="seg" data-view="first" aria-pressed="false">一人称</button>
+      <button class="seg" data-view="pelvis" aria-pressed="false">骨盤</button>
+    </div>
+
+    <div class="topgroup right">
+      <button id="btn-help" class="ghost" title="使い方と用語（H）">？ 用語</button>
+      <button id="btn-panels" class="ghost" title="パネル表示切替（Tab）">▤</button>
+    </div>
+  </header>
+
+  <!-- ===== 左パネル：操作 ===== -->
+  <aside id="panel-left" class="panel">
+    <section class="block">
+      <h2>カメラ</h2>
+      <div class="chips" id="camera-presets">
+        <button class="chip" data-cam="follow">追従</button>
+        <button class="chip" data-cam="front">正面</button>
+        <button class="chip" data-cam="side">真横</button>
+        <button class="chip" data-cam="top">真上</button>
+        <button class="chip" data-cam="behind">後方</button>
+        <button class="chip" data-cam="free">自由</button>
+      </div>
+      <p class="hint">ドラッグで回転／ホイールで拡大縮小／右ドラッグで平行移動</p>
+    </section>
+
+    <section class="block">
+      <h2>レベル（滑走設定）</h2>
+      <div class="chips" id="level-presets">
+        <button class="chip" data-level="beginner">初級</button>
+        <button class="chip" data-level="intermediate">中級</button>
+        <button class="chip" data-level="racer">競技</button>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>姿勢パラメータ</h2>
+      <label class="slider">
+        <span>外向角（骨盤のひねり）<b id="out-counter">—</b></span>
+        <input type="range" id="rng-counter" min="0" max="45" step="1" />
+      </label>
+      <label class="slider">
+        <span>外傾角（腰の横曲げ）<b id="out-angulation">—</b></span>
+        <input type="range" id="rng-angulation" min="0" max="40" step="1" />
+      </label>
+      <label class="slider">
+        <span>滑走速度<b id="out-speed">—</b></span>
+        <input type="range" id="rng-speed" min="15" max="90" step="1" />
+      </label>
+      <label class="slider">
+        <span>斜度<b id="out-slope">—</b></span>
+        <input type="range" id="rng-slope" min="8" max="35" step="1" />
+      </label>
+    </section>
+
+    <section class="block">
+      <h2>コースセット（FIS 準拠）</h2>
+      <label class="slider">
+        <span>ポール間隔<b id="out-gate">—</b></span>
+        <input type="range" id="rng-gate" min="6" max="30" step="0.5" />
+      </label>
+      <label class="slider">
+        <span>振り幅（横のズレ）<b id="out-offset">—</b></span>
+        <input type="range" id="rng-offset" min="1" max="10" step="0.25" />
+      </label>
+      <p class="rule" id="fis-check">—</p>
+    </section>
+
+    <section class="block">
+      <h2>表示</h2>
+      <div class="toggles">
+        <label><input type="checkbox" id="tg-forces" checked /> 力のベクトル</label>
+        <label><input type="checkbox" id="tg-body" checked /> 身体（半透明）</label>
+        <label><input type="checkbox" id="tg-skeleton" checked /> 骨格</label>
+        <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
+        <label><input type="checkbox" id="tg-angles" checked /> 角度ガイド</label>
+        <label><input type="checkbox" id="tg-track" checked /> シュプール</label>
+        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+        <label><input type="checkbox" id="tg-ghost" /> 比較：外向なし</label>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ===== 右パネル：計測値と解説 ===== -->
+  <aside id="panel-right" class="panel">
+    <section class="block">
+      <h2>いまの局面</h2>
+      <p class="phase" id="phase-name">—</p>
+      <p class="phase-desc" id="phase-desc">—</p>
+    </section>
+
+    <section class="block">
+      <h2>骨盤の向き（真上から）</h2>
+      <canvas id="compass" width="260" height="150"></canvas>
+      <p class="hint">青＝骨盤の正面／白＝スキーの進行方向。開いた角度が<b>外向角</b>です。</p>
+    </section>
+
+    <section class="block">
+      <h2>数値</h2>
+      <div class="readouts" id="readouts"></div>
+    </section>
+
+    <section class="block">
+      <h2>1ターンの推移</h2>
+      <canvas id="chart" width="260" height="130"></canvas>
+      <p class="legend">
+        <span class="k k-force"></span>外脚荷重
+        <span class="k k-counter"></span>外向角
+        <span class="k k-incl"></span>内傾角
+      </p>
+    </section>
+  </aside>
+
+  <!-- ===== 下部：再生 ===== -->
+  <footer id="transport">
+    <button id="btn-play" class="play" aria-label="再生／一時停止">❚❚</button>
+    <input type="range" id="rng-phase" min="0" max="1000" step="1" value="0" aria-label="ターン位相" />
+    <div class="ticks" id="phase-ticks" aria-hidden="true"></div>
+    <label class="rate">
+      速度
+      <select id="sel-rate">
+        <option value="0.1">0.1×</option>
+        <option value="0.25" selected>0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1">1.0×</option>
+      </select>
+    </label>
+  </footer>
+
+  <!-- ===== 用語モーダル ===== -->
+  <div id="help" class="modal" hidden>
+    <div class="modal-inner" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <button class="close" id="btn-help-close" aria-label="閉じる">×</button>
+      <h2 id="help-title">用語と使い方</h2>
+      <div class="help-grid">
+        <div>
+          <h3>外向（がいこう）</h3>
+          <p>骨盤・上体を<b>ターンの外側</b>へ向けること。スキーの進行方向と骨盤の正面がつくる角度が<b>外向角</b>です。山回りで大きく、切り替えでほどけます。</p>
+          <h3>外傾（がいけい）</h3>
+          <p>腰から上を<b>外側へ横に曲げる</b>こと。内傾（体全体の傾き）に外傾を足すと、身体を倒しすぎずにエッジ角を増やせます。</p>
+          <h3>内傾（ないけい）</h3>
+          <p>遠心力と重力の合力の向きに身体が倒れる角度。<b>力学で決まる</b>ので自分では自由に選べません。</p>
+        </div>
+        <div>
+          <h3>骨盤の色分け</h3>
+          <ul class="bonelist" id="bone-legend"></ul>
+          <h3>キーボード</h3>
+          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>三人称 <kbd>2</kbd>一人称 <kbd>3</kbd>骨盤　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ</p>
+        </div>
+      </div>
+      <p class="sources">数値の出典：FIS International Ski Competition Rules (ICR) 801/901条、FIS Specifications for Alpine Competition Equipment 2024/25、身体寸法は Drillis &amp; Contini (1966) / Winter (2009)。詳細は <code>docs/REFERENCES.md</code>。</p>
+    </div>
+  </div>
+
+  <div id="loading"><span>3Dモデルを準備中…</span></div>
+  <div id="error" hidden></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+<script>
+  // three.js は CDN から読み込みます。読めなかったときに理由がわかるようにしておく。
+  setTimeout(() => {
+    const load = document.getElementById('loading');
+    if (load && !load.classList.contains('done')) {
+      load.querySelector('span').innerHTML =
+        '読み込みに失敗しました。<br>three.js を cdnjs から取得できていない可能性があります'
+        + '（オフライン、または ES モジュールが使えない開き方）。<br>'
+        + 'ファイルを直接開かず <code>python3 -m http.server</code> などで配信してください。';
+    }
+  }, 9000);
+</script>
+</body>
+</html>
