@@ -267,9 +267,9 @@ export function createSkier(opts = {}) {
 
     /* --- 股関節 --- */
     const hipR = pelvisPos.clone().addScaledVector(right, pelvis.hipHalfWidth)
-      .addScaledVector(pelvisUp, -0.042 * pelvis.scale);
+      .addScaledVector(pelvisUp, -0.040 * pelvis.scale);
     const hipL = pelvisPos.clone().addScaledVector(right, -pelvis.hipHalfWidth)
-      .addScaledVector(pelvisUp, -0.042 * pelvis.scale);
+      .addScaledVector(pelvisUp, -0.040 * pelvis.scale);
 
     /* --- スキーと足首 --- */
     // スキー面の法線：斜面法線を進行方向軸まわりにエッジ角ぶん内側へ倒す
@@ -313,6 +313,9 @@ export function createSkier(opts = {}) {
       fleshShank[side].userData.set(kp, ankles[side]);
       state.angles[`knee${side}`] = Math.PI - angleBetween(
         hips[side].clone().sub(kp), ankles[side].clone().sub(kp));
+      // 大腿骨頸部と大転子を実際の脚の向きに合わせる（股関節の動きが見える）
+      const d = kp.clone().sub(hips[side]).normalize();
+      pelvis.setFemurDir(side, new THREE.Vector3(d.dot(right), d.dot(pelvisUp), d.dot(fwd)));
     }
 
     /* --- 脊柱・胸郭 --- */
@@ -407,6 +410,7 @@ export function createSkier(opts = {}) {
       outerFoot: (outwardIsRight ? feet.R : feet.L).clone().add(off),
       innerFoot: (outwardIsRight ? feet.L : feet.R).clone().add(off),
       outerKnee: (outwardIsRight ? knee.R.position : knee.L.position).clone().add(off),
+      outerAnkle: (outwardIsRight ? ankles.R : ankles.L).clone().add(off),
       chest: chestPos.clone().add(off),
       asisMid: pelvisPos.clone().addScaledVector(fwd, 0.10).add(off),
       eye: headPos.clone().addScaledVector(headFwd, seg.headR * 0.85)

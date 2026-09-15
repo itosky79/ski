@@ -100,11 +100,12 @@ export class ForceView {
     for (const a of Object.values(this.arrows)) this.group.add(a);
     this.anchors = {};
     this.refLen = 1.15;         // 体重 1 倍ぶんの矢印長 [m]
+    this.scale = 1;             // 骨盤クローズアップでは短くする
   }
 
   update(s) {
     const m = this.mass;
-    const unit = this.refLen / (m * G);
+    const unit = this.refLen * this.scale / (m * G);
     const { gravity, centrifugal, snow } = s.forces;
     const resultant = gravity.clone().add(centrifugal);      // = −雪面反力
 
@@ -132,6 +133,7 @@ export class ForceView {
   }
 
   setVisible(v) { this.group.visible = v; }
+  setScale(k) { this.scale = k; }
 }
 
 /* ================================================================= */
@@ -213,4 +215,14 @@ export class AngleGuides {
   }
 
   setVisible(v) { this.group.visible = v; }
+
+  /** 骨盤クローズアップでは、骨盤まわりの角度だけを残す */
+  setPelvisMode(on) {
+    this.pelvisMode = on;
+    this.sectors.inclination.visible = !on;
+    this.sectors.edge.visible = !on;
+    this.skiDirArrow.visible = !on;
+    this.pelvisDirArrow.visible = !on;
+    this.legLine.visible = !on;
+  }
 }

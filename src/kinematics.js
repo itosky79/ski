@@ -54,6 +54,9 @@ export class TurnModel {
       mass: 75,
       skiSidecutR: 12.8,
       poleClearance: 0.35,
+      // 重力の斜面方向成分のうち、加速に使われる割合（残りはエッジで受け止める）。
+      // 1 なら自由滑降＝身体は斜面に垂直、0 なら等速＝身体は斜面の角度ぶん後ろに残る。
+      glideFactor: 0.55,
     }, params);
     this.rebuild();
   }
@@ -126,6 +129,10 @@ export class TurnModel {
 
     // 求心加速度
     const accel = eLat.clone().multiplyScalar(this.v * this.v * kappa);
+    // 進行方向の加速度：重力の斜面成分のうち glideFactor ぶんが加速に回る。
+    // （等速と仮定すると身体が必ず後傾になってしまうため）
+    const gAlong = G * Math.sin(this.slopeRad) / Math.sqrt(den);
+    accel.addScaledVector(tangent, this.p.glideFactor * gAlong);
 
     // 雪面反力（単位質量）
     const gVec = new THREE.Vector3(0, -G, 0);

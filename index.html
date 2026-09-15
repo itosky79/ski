@@ -9,7 +9,7 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.0/three.module.min.js"
+    "three": "./vendor/three.module.min.js"
   }
 }
 </script>
@@ -133,6 +133,11 @@
     </section>
 
     <section class="block">
+      <h2>骨盤の動き</h2>
+      <div class="motions" id="pelvis-motions"></div>
+    </section>
+
+    <section class="block">
       <h2>数値</h2>
       <div class="readouts" id="readouts"></div>
     </section>
@@ -195,16 +200,34 @@
 
 <script type="module" src="./src/main.js"></script>
 <script>
-  // three.js は CDN から読み込みます。読めなかったときに理由がわかるようにしておく。
-  setTimeout(() => {
-    const load = document.getElementById('loading');
-    if (load && !load.classList.contains('done')) {
-      load.querySelector('span').innerHTML =
-        '読み込みに失敗しました。<br>three.js を cdnjs から取得できていない可能性があります'
-        + '（オフライン、または ES モジュールが使えない開き方）。<br>'
-        + 'ファイルを直接開かず <code>python3 -m http.server</code> などで配信してください。';
+  // three.js は vendor/ に同梱しているのでネットワークは不要。
+  // それでも読めないとき（file:// で直接開いた等）に理由がわかるようにしておく。
+  (function () {
+    var load = document.getElementById('loading');
+    var msg = load && load.querySelector('span');
+    var failed = false;
+    function fail(reason) {
+      if (failed || !msg || load.classList.contains('done')) return;
+      failed = true;
+      msg.innerHTML = '読み込みに失敗しました。<br><small>' + reason + '</small><br><br>'
+        + 'ファイルを直接開いた場合（file://）は ES モジュールが使えません。<br>'
+        + '<code>python3 -m http.server</code> などで配信して開いてください。';
     }
-  }, 9000);
+    window.addEventListener('error', function (e) {
+      if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
+        fail('ファイルを取得できませんでした：' + (e.target.src || e.target.href));
+      } else if (e.message) { fail(e.message); }
+    }, true);
+    // 進み具合を出す（遅い端末で固まったように見えないように）
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      if (!msg) return clearInterval(timer);
+      if (load.classList.contains('done') || failed) return clearInterval(timer);
+      var sec = Math.round((Date.now() - t0) / 1000);
+      if (sec >= 3) msg.textContent = '3Dモデルを準備中… ' + sec + '秒';
+      if (sec >= 40) { clearInterval(timer); fail('時間内に初期化できませんでした。'); }
+    }, 1000);
+  })();
 </script>
 </body>
 </html>

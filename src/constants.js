@@ -93,6 +93,7 @@ export const DISCIPLINES = {
     kneeAngulationDeg: 8,
     stanceWidth: 0.26,      // 両足の左右間隔 [m]
     innerLead: 0.16,        // 内足の先行量 [m]
+    glideFactor: 0.45,      // 重力の斜面成分のうち加速に回る割合（SL は減速が大きい）
     desc: '小さく速いターン。上体を谷へ向けたまま脚だけを切り替えるので、外向が大きく出ます。',
   },
   GS: {
@@ -118,6 +119,7 @@ export const DISCIPLINES = {
     kneeAngulationDeg: 6,
     stanceWidth: 0.32,
     innerLead: 0.10,
+    glideFactor: 0.62,
     desc: '大きく長いターン。内傾が深くなる一方で外向は控えめ。外傾で外スキーを押し続けます。',
   },
 };

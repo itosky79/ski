@@ -13,7 +13,7 @@ const PRESETS = {
   side:   { az: 90, el: 6, dist: 5.4, fov: 40 },
   top:    { az: 176, el: 82, dist: 10, fov: 45 },
   free:   { az: 145, el: 16, dist: 5.6, fov: 46 },
-  pelvis: { az: 44, el: 14, dist: 1.45, fov: 36 },
+  pelvis: { az: 38, el: 16, dist: 0.88, fov: 34 },
 };
 
 export class CameraRig {
@@ -100,6 +100,7 @@ export class CameraRig {
     this.camera.fov = p.fov;
     this.camera.updateProjectionMatrix();
     this.pan.set(0, 0, 0);
+    this.first = true;            // 切り替えたらすぐその位置へ
   }
 
   setScale(k) {
@@ -114,6 +115,7 @@ export class CameraRig {
       this.camera.fov = 78;
       this.camera.updateProjectionMatrix();
       this.fpYaw = 0; this.fpPitch = 0;
+      this.first = true;
     } else if (mode === 'pelvis') {
       this.setPreset('pelvis');
     } else {
@@ -153,16 +155,21 @@ export class CameraRig {
 
     const az = THREE.MathUtils.degToRad(this.az);
     const el = THREE.MathUtils.degToRad(this.el);
-    const dir = model.D.clone().multiplyScalar(Math.cos(az))
-      .addScaledVector(model.C, Math.sin(az))
+    // 骨盤ビューでは骨盤の座標系を基準にするので、ターン中も同じ向きから見える
+    const a = rigState.anchors;
+    const base = (this.mode === 'pelvis' && a.pelvisFwd)
+      ? { f: a.pelvisFwd, r: a.pelvisRight, u: a.pelvisUp }
+      : { f: model.D, r: model.C, u: model.N };
+    const dir = base.f.clone().multiplyScalar(Math.cos(az))
+      .addScaledVector(base.r, Math.sin(az))
       .multiplyScalar(Math.cos(el))
-      .addScaledVector(model.N, Math.sin(el))
+      .addScaledVector(base.u, Math.sin(el))
       .normalize();
     const want = target.clone().addScaledVector(dir, this.dist);
 
     cam.position.lerp(want, lerp);
     const q = new THREE.Quaternion().setFromRotationMatrix(
-      new THREE.Matrix4().lookAt(cam.position, target, model.N));
+      new THREE.Matrix4().lookAt(cam.position, target, base.u));
     cam.quaternion.slerp(q, lerp);
     this.first = false;
   }

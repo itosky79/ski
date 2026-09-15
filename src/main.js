@@ -81,6 +81,7 @@ function makeModel(d, ghost = false) {
     kneeAngulationDeg: ghost ? 0 : d.kneeAngulationDeg,
     stanceWidth: d.stanceWidth,
     innerLead: d.innerLead,
+    glideFactor: d.glideFactor,
     skiSidecutR: d.skiSidecutR,
     height: ANTHRO.height, mass: ANTHRO.mass,
   });
@@ -107,14 +108,20 @@ const ui = new UI({
     else if (v === 'pelvis') camRig.setMode('pelvis');
     else camRig.setMode('third');
     app.view = v;
-    skier.setFocusPelvis(v === 'pelvis');
-    guides.setScale(v === 'pelvis' ? 0.45 : 1);
+    const pv = v === 'pelvis';
+    skier.setFocusPelvis(pv);
+    skier.setVisible({ com: !pv });
+    guides.setScale(pv ? 0.42 : 1);
+    guides.setPelvisMode(pv);
+    forceView.setVisible(!pv && app.show.forces);
     labels.clearAll();
   },
   onCamera(c) {
     camRig.setPreset(c); ui.setView('third', true); app.view = 'third';
     skier.setFocusPelvis(false);
-    guides.setScale(1);
+    skier.setVisible({ com: true });
+    guides.setScale(1); guides.setPelvisMode(false);
+    forceView.setVisible(app.show.forces);
   },
   onLevel(l) { app.level = l; rebuild(false); },
   onParam(k, v) {
@@ -144,8 +151,8 @@ const ui = new UI({
 
 function applyVisibility() {
   skier.setVisible({ skeleton: app.show.skeleton, body: app.show.body,
-                     pelvis: app.show.pelvis, com: true });
-  forceView.setVisible(app.show.forces);
+                     pelvis: app.show.pelvis, com: app.view !== 'pelvis' });
+  forceView.setVisible(app.show.forces && app.view !== 'pelvis');
   guides.setVisible(app.show.angles);
   course.setVisible({ tracks: app.show.track, gates: app.show.gates });
   ghost.root.visible = app.show.ghost;
@@ -203,6 +210,22 @@ function buildSeries() {
     });
   }
   return out;
+}
+
+/**
+ * 腰まわりの動きを 3 つに分けて数値にする。
+ *   回旋       : スキーの進行方向に対する骨盤の向き（＝外向角）
+ *   腰の折れ   : 骨盤の上下軸と外脚の線のなす角（股関節での外傾）
+ *   すねの前傾 : 外脚のすねが斜面法線からどれだけ前に倒れているか（前後バランス）
+ */
+function pelvisMotions(s) {
+  const a = skier.state.anchors;
+  if (!a.pelvisFwd || !a.outerAnkle) return { yaw: 0, hip: 0, shin: 0 };
+  const yaw = deg(s.counter);
+  const hip = deg(Math.acos(THREE.MathUtils.clamp(a.pelvisUp.dot(s.legDir), -1, 1)));
+  const shinDir = a.outerKnee.clone().sub(a.outerAnkle).normalize();
+  const shin = deg(Math.asin(THREE.MathUtils.clamp(shinDir.dot(s.tangent), -1, 1)));
+  return { yaw, hip, shin };
 }
 
 /* ---------- ラベル ---------- */
@@ -287,6 +310,7 @@ function tick() {
   forceView.update(s);
   guides.update(s, skier);
   ui.update(s);
+  ui.updateMotions(pelvisMotions(s));
   updateLabels(s);
 
   // 太陽を追従させて影を出す
@@ -326,6 +350,10 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ---------- 起動 ---------- */
+// デバッグ／授業用のハンドル（コンソールから触れるように）
+window.skiTrainer = { app, get model() { return model; }, get skier() { return skier; },
+  camRig, ui, scene, renderer };
+
 try {
   ui.setLevel(app.level);
   ui.setCamera('follow');

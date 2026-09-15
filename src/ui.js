@@ -91,7 +91,20 @@ export class UI {
       { k: 'share', label: '外脚の荷重配分', unit: '%' },
       { k: 'carve', label: 'カービング判定', unit: '', wide: true },
     ];
+    this.motionDefs = [
+      { k: 'yaw', name: '回旋（外向）', range: 40, color: 'var(--outer)',
+        hint: (v) => v > 3 ? '骨盤がターン外側を向いています（＝外向）'
+                           : 'スキーと正対しています' },
+      { k: 'hip', name: '腰の折れ（股関節の外傾）', range: 30, color: 'var(--inner)',
+        hint: (v) => v > 3 ? '外脚の付け根で上体を起こしています'
+                           : '股関節はまっすぐ（上体は脚の延長）' },
+      { k: 'shin', name: 'すねの前傾（前後バランス）', range: 45, color: 'var(--accent-2)',
+        hint: (v) => v > 14 ? 'すねでブーツを押せています'
+                   : v > 6 ? 'すねの前傾がやや浅い'
+                           : 'すねが立って後傾ぎみ — 脛でブーツの前を押す' },
+    ];
     this._buildReadouts();
+    this._buildMotions();
     this._buildLegend();
     this._buildTicks();
     this._wire();
@@ -128,6 +141,43 @@ export class UI {
       box.appendChild(el);
       this.ro[d.k] = el.querySelector('b');
       if (d.hi) this.ro[d.k].style.color = `var(${d.hi})`;
+    }
+  }
+
+  _buildMotions() {
+    const box = document.querySelector('#pelvis-motions');
+    if (!box) return;
+    box.innerHTML = '';
+    this.mo = {};
+    for (const d of this.motionDefs) {
+      const el = document.createElement('div');
+      el.className = 'mo';
+      el.innerHTML = `<span class="mo-name">${d.name}</span><span class="mo-val">—</span>`
+        + `<div class="mo-bar"><div class="mo-fill" style="background:${d.color}"></div></div>`
+        + `<span class="mo-hint"></span>`;
+      box.appendChild(el);
+      this.mo[d.k] = {
+        val: el.querySelector('.mo-val'),
+        fill: el.querySelector('.mo-fill'),
+        hint: el.querySelector('.mo-hint'),
+        def: d,
+      };
+    }
+  }
+
+  /** 骨盤の 3 つの動きを更新する（角度は度） */
+  updateMotions(m) {
+    if (!this.mo) return;
+    for (const [k, o] of Object.entries(this.mo)) {
+      const v = m[k] ?? 0;
+      const r = o.def.range;
+      const t = Math.max(-1, Math.min(1, v / r));
+      o.val.textContent = `${v >= 0 ? '' : '−'}${Math.abs(v).toFixed(0)}°`;
+      o.val.style.color = o.def.color;
+      const half = Math.abs(t) * 50;
+      o.fill.style.left = (t >= 0 ? 50 : 50 - half) + '%';
+      o.fill.style.width = half + '%';
+      o.hint.innerHTML = o.def.hint(v);
     }
   }
 
