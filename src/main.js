@@ -22,7 +22,7 @@ const app = {
   u: 0,
   gateCount: 9,
   show: { forces: true, body: true, skeleton: true, pelvis: true, angles: true,
-          track: true, gates: true, ghost: false },
+          track: true, gates: true, muscles: false, ghost: false },
 };
 
 /* ---------- 3D 基本セット ---------- */
@@ -159,6 +159,7 @@ function applyVisibility() {
                      pelvis: app.show.pelvis, com: app.view !== 'pelvis' });
   forceView.setVisible(app.show.forces && app.view !== 'pelvis');
   guides.setVisible(app.show.angles);
+  skier.setMusclesVisible(app.show.muscles);
   course.setVisible({ tracks: app.show.track, gates: app.show.gates });
   ghost.root.visible = app.show.ghost;
   labels.clearAll();
@@ -362,6 +363,7 @@ function tick() {
   forceView.update(s);
   guides.update(s, skier);
   ui.update(s, { hipLead: skier.state.angles.hipLead ?? 0 });
+  ui.updateMuscles(skier.state.muscleAct, skier.state.outerSide, app.show.muscles);
   ui.updateMotions(pelvisMotions(s));
   ui.updateMotions(hipMotions(), 'hip');
   updateLabels(s);

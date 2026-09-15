@@ -123,6 +123,7 @@
         <label><input type="checkbox" id="tg-angles" checked /> 角度ガイド</label>
         <label><input type="checkbox" id="tg-track" checked /> シュプール</label>
         <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+        <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
         <label><input type="checkbox" id="tg-ghost" /> 比較：外向なし</label>
       </div>
     </section>
@@ -145,6 +146,12 @@
     <section class="block">
       <h2>骨盤の動き</h2>
       <div class="motions" id="pelvis-motions"></div>
+    </section>
+
+    <section class="block" id="block-muscles" hidden>
+      <h2>働いている筋（外力から計算）</h2>
+      <div class="muscles" id="muscle-list"></div>
+      <p class="hint" id="muscle-note">—</p>
     </section>
 
     <section class="block">

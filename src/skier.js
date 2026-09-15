@@ -13,6 +13,8 @@ import { ANTHRO, SEGMENT_MASS, BONE_COLORS } from './constants.js';
 import { createPelvis } from './pelvis.js';
 import { createLegBones } from './leg.js';
 import { createTorso } from './torso.js';
+import { createMuscles, MUSCLES } from './muscles.js';
+import { computeMuscleLoad, applyMuscleActivation } from './biomech.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const rad = (d) => d * Math.PI / 180;
@@ -225,6 +227,24 @@ export function createSkier(opts = {}) {
     poles[s].add(shaft);
     gearG.add(boots[s], skis[s], poles[s]);
   }
+
+  /* 筋（骨のノードを名前で引けるようにして渡す） */
+  const muscleGroup = new THREE.Group();
+  muscleGroup.name = 'muscleLayer';
+  root.add(muscleGroup);
+  const resolveNode = (name, side) => {
+    if (name === 'pelvis') return pelvisNode;
+    if (name === 'femur') return legs[side].femur;
+    if (name === 'shank') return legs[side].shank;
+    if (name.startsWith('spine')) {
+      const map = { spineL3: 2, spineT12: 5, spineT10: 7, spineT9: 8, spineT8: 9, spineT6: 11 };
+      return torso.verts[map[name] ?? 5];
+    }
+    return null;
+  };
+  const muscles = createMuscles(H, resolveNode);
+  muscleGroup.add(muscles.group);
+  muscleGroup.visible = false;
 
   /* 重心マーカー */
   const comMarker = new THREE.Group();
@@ -466,6 +486,41 @@ export function createSkier(opts = {}) {
     const rot = sgn * Math.acos(THREE.MathUtils.clamp(a1.dot(a2), -1, 1));
     state.angles.hipRotation = -rot * sgnOut;   // 内旋を + にする
     state.outerSide = outerSide;
+
+    /* --- 筋：外力から関節モーメントを求めて活動度を出す --- */
+    if (muscleGroup.visible) {
+      const comUpper = lumbarBase.clone().lerp(midThorax, 0.55).multiplyScalar(0.46)
+        .addScaledVector(midThorax.clone().lerp(chestPos, 0.45), 0.40)
+        .addScaledVector(headPos, 0.14);
+      const cpOuter = (outwardIsRight ? feet.R : feet.L).clone()
+        .addScaledVector(s.tangent, s.cpOffset ?? 0);
+      const cpInner = (outwardIsRight ? feet.L : feet.R).clone()
+        .addScaledVector(s.tangent, (s.cpOffset ?? 0) + (s.innerLead ?? 0));
+      const angByside = {};
+      for (const sd of ['L', 'R']) {
+        const fem = kneePos[sd].clone().sub(hips[sd]).normalize();
+        const shin = ankles[sd].clone().sub(kneePos[sd]).normalize().negate();
+        angByside[sd] = {
+          hipFlexion: Math.atan2(fem.dot(fwd), -fem.dot(pelvisUp)),
+          knee: state.angles[`knee${sd}`] ?? 0,
+          shin: Math.asin(THREE.MathUtils.clamp(
+            kneePos[sd].clone().sub(ankles[sd]).normalize().dot(s.tangent), -1, 1)),
+        };
+      }
+      const joints = {
+        angles: angByside, spineFlex,
+        hipL, hipR, kneeL: kneePos.L, kneeR: kneePos.R,
+        ankleL: ankles.L, ankleR: ankles.R,
+        legAxis: { L: legBasis.L.X, R: legBasis.R.X },
+        cpOuter, cpInner, outerSide, outerIsRight: outwardIsRight,
+        pelvisLeft: left, pelvisFwd: fwd, pelvisUp,
+        l5s1: sacralTop, comUpper,
+      };
+      const load = computeMuscleLoad(s, joints, opts.mass ?? ANTHRO.mass);
+      state.muscleLoad = load;
+      state.muscleAct = applyMuscleActivation(MUSCLES, load, outerSide);
+      muscles.update(state.muscleAct);
+    }
     // 内腰がどれだけ前に出ているか（足元の先行が骨盤に伝わった量）
     const innerHip = outwardIsRight ? hipL : hipR;
     const outerHip = outwardIsRight ? hipR : hipL;
@@ -498,8 +553,9 @@ export function createSkier(opts = {}) {
   }
 
   return {
-    root, pelvis, update, state,
-    groups: { skeleton, body: bodyG, gear: gearG, com: comMarker },
+    root, pelvis, torso, muscles, update, state,
+    groups: { skeleton, body: bodyG, gear: gearG, com: comMarker, muscles: muscleGroup },
+    setMusclesVisible(v) { muscleGroup.visible = v; },
     setVisible({ skeleton: sk, body: bd, pelvis: pv, com }) {
       if (sk !== undefined) skeleton.visible = sk;
       if (bd !== undefined) { bodyVisible = bd; bodyG.visible = bd; }

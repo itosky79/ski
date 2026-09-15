@@ -3,6 +3,7 @@
  */
 import * as THREE from 'three';
 import { BONE_COLORS, PHASES, LEVELS } from './constants.js';
+import { MUSCLES } from './muscles.js';
 
 const deg = (r) => r * 180 / Math.PI;
 const $ = (s) => document.querySelector(s);
@@ -270,7 +271,7 @@ export class UI {
         h.onParam(k, parseFloat(el.value));
       });
     }
-    const toggles = ['forces', 'body', 'skeleton', 'pelvis', 'angles', 'track', 'gates', 'ghost'];
+    const toggles = ['forces', 'body', 'skeleton', 'pelvis', 'angles', 'track', 'gates', 'muscles', 'ghost'];
     this.toggles = {};
     for (const t of toggles) {
       const el = $('#tg-' + t);
@@ -410,6 +411,44 @@ export class UI {
     this.drawCompass(s);
     if (this.series) this.drawChart(this.series, s.phase);
     this.lastPhase = s.phase;
+  }
+
+  /** 働いている筋の一覧（活動度の高い順） */
+  updateMuscles(act, outerSide, on) {
+    const box = document.querySelector('#muscle-list');
+    const block = document.querySelector('#block-muscles');
+    if (!box || !block) return;
+    block.hidden = !on;
+    if (!on || !act) return;
+    const inner = outerSide === 'R' ? 'L' : 'R';
+    const rows = MUSCLES.map((d) => {
+      const o = act[d.id + outerSide] ?? 0;
+      const i = act[d.id + inner] ?? 0;
+      return { d, v: Math.max(o, i), o, i, onOuter: o >= i };
+    }).sort((a, b) => b.v - a.v).slice(0, 7);
+
+    if (!this._musRows) { box.innerHTML = ''; this._musRows = []; }
+    while (this._musRows.length < rows.length) {
+      const el = document.createElement('div');
+      el.className = 'mus';
+      el.innerHTML = '<span class="mus-name"></span><span class="mus-val"></span>'
+        + '<div class="mus-bar"><div class="mus-fill"></div></div>';
+      box.appendChild(el);
+      this._musRows.push({ el, name: el.querySelector('.mus-name'),
+        val: el.querySelector('.mus-val'), fill: el.querySelector('.mus-fill') });
+    }
+    rows.forEach((r, k) => {
+      const row = this._musRows[k];
+      const col = '#' + r.d.color.toString(16).padStart(6, '0');
+      row.name.innerHTML = `${r.d.name}<span class="mus-side">${r.onOuter ? '外脚側' : '内脚側'}</span>`;
+      row.val.textContent = `${Math.round(r.v * 100)}%`;
+      row.val.style.color = col;
+      row.fill.style.width = `${Math.round(r.v * 100)}%`;
+      row.fill.style.background = col;
+    });
+    const top = rows[0];
+    const note = document.querySelector('#muscle-note');
+    if (top && note) note.innerHTML = `<b>${top.d.name}</b>：${top.d.note}`;
   }
 
   /** 骨盤の向きコンパス（真上から見た図） */

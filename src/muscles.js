@@ -1,0 +1,282 @@
+/**
+ * muscles.js — 主要な筋（起始・停止・作用）と、その表示
+ *
+ * ■ 考え方
+ *   筋は「骨のどこからどこへ付いているか（起始・停止）」で働きが決まる。
+ *   そこで各筋を、骨のローカル座標で定義した付着部どうしを結ぶ帯として描く。
+ *   骨が動けば筋の走行も自動的に変わる。
+ *   活動度（色）は biomech.js が外力から計算した関節モーメントから決まる。
+ *
+ * ■ 付着部の座標系
+ *   pelvis : 骨盤ローカル（+x 左・+y 上・+z 前、原点は骨盤中心）
+ *   femur  : 大腿骨ローカル（原点＝骨頭、−y が膝方向、+x が外側）
+ *   shank  : 脛骨ローカル（原点＝膝、−y が足首方向、+x が外側）
+ *   spineXX: その椎骨のローカル
+ *
+ * ■ 出典
+ *   起始・停止・作用は標準的な解剖学の記載（Gray's Anatomy / Kendall,
+ *   Muscles: Testing and Function）に基づく。座標は本モデルの骨格に合わせた近似。
+ */
+import * as THREE from 'three';
+
+const P = (x, y, z) => [x, y, z];
+
+/**
+ * 筋の定義。
+ *   pull: この筋が担う関節モーメントの種類（biomech.js が参照）
+ *   side: 'both' なら左右対称に作る
+ */
+export const MUSCLES = [
+  /* ---------------- 股関節まわり ---------------- */
+  {
+    id: 'gluteusMax', name: '大殿筋', short: '大殿筋', color: 0xd94f4f, radius: 0.034,
+    origin: { node: 'pelvis', p: P(0.045, 0.035, -0.088) },      // 腸骨後部・仙骨
+    via: [{ node: 'pelvis', p: P(0.098, -0.025, -0.060) }],
+    insertion: { node: 'femur', p: P(0.030, -0.125, -0.022) },   // 殿筋粗面
+    pull: [['hipExtension', 1.0], ['hipExternalRot', 0.5], ['hipAbduction', 0.25]],
+    note: '股関節を伸ばす・外へ回す。山回りで外脚を支える主役。',
+  },
+  {
+    id: 'gluteusMed', name: '中殿筋', short: '中殿筋', color: 0xff8f3f, radius: 0.026,
+    origin: { node: 'pelvis', p: P(0.092, 0.050, -0.012) },      // 腸骨外面
+    insertion: { node: 'femur', p: P(0.050, -0.016, -0.004) },   // 大転子
+    pull: [['hipAbduction', 1.0]],
+    note: '片脚で立ったとき骨盤が落ちないよう支える。外傾を保つ要。',
+  },
+  {
+    id: 'adductors', name: '内転筋群', short: '内転筋', color: 0x59b0e0, radius: 0.030,
+    origin: { node: 'pelvis', p: P(0.022, -0.098, 0.030) },      // 恥骨・坐骨
+    insertion: { node: 'femur', p: P(-0.012, -0.230, -0.022) },  // 粗線
+    pull: [['hipAdduction', 1.0]],
+    note: '脚を内へ引きつける。内スキーを引き寄せ、両脚をそろえる。',
+  },
+  {
+    id: 'iliopsoas', name: '腸腰筋', short: '腸腰筋', color: 0xc77dff, radius: 0.022,
+    origin: { node: 'spineL3', p: P(0.018, 0.010, 0.004) },      // 腰椎
+    via: [{ node: 'pelvis', p: P(0.048, -0.045, 0.055) }],
+    insertion: { node: 'femur', p: P(-0.014, -0.060, -0.020) },  // 小転子
+    pull: [['hipFlexion', 1.0]],
+    note: '股関節を曲げる。前に構える姿勢と、腰椎の安定を担う。',
+  },
+  {
+    id: 'tfl', name: '大腿筋膜張筋・腸脛靭帯', short: '腸脛靭帯', color: 0xffd166, radius: 0.015,
+    origin: { node: 'pelvis', p: P(0.112, 0.038, 0.082) },       // 上前腸骨棘
+    via: [{ node: 'femur', p: P(0.046, -0.210, 0.006) }],
+    insertion: { node: 'shank', p: P(0.028, -0.058, 0.012) },    // ゲルディ結節
+    pull: [['hipAbduction', 0.6], ['hipInternalRot', 0.4], ['kneeExtension', 0.2]],
+    note: '骨盤から膝の外側までをつなぐ帯。外側から膝を支える。',
+  },
+  /* ---------------- 膝まわり ---------------- */
+  {
+    id: 'rectusFemoris', name: '大腿直筋', short: '大腿直筋', color: 0xff5f5f, radius: 0.026,
+    origin: { node: 'pelvis', p: P(0.058, -0.008, 0.068) },      // 下前腸骨棘
+    via: [{ node: 'femur', p: P(0.004, -0.300, 0.038) }],
+    insertion: { node: 'shank', p: P(0, -0.048, 0.026) },        // 膝蓋腱→脛骨粗面
+    pull: [['kneeExtension', 1.0], ['hipFlexion', 0.4]],
+    note: '膝を伸ばし股関節を曲げる。前に構えたまま脚を支える。',
+  },
+  {
+    id: 'vastusLat', name: '外側広筋', short: '外側広筋', color: 0xff7a5f, radius: 0.032,
+    origin: { node: 'femur', p: P(0.032, -0.095, -0.004) },
+    via: [{ node: 'femur', p: P(0.024, -0.330, 0.030) }],
+    insertion: { node: 'shank', p: P(0, -0.048, 0.026) },
+    pull: [['kneeExtension', 1.0]],
+    note: '太ももの外側。ターン中いちばん働く筋のひとつ。',
+  },
+  {
+    id: 'vastusMed', name: '内側広筋', short: '内側広筋', color: 0xffa07a, radius: 0.026,
+    origin: { node: 'femur', p: P(-0.016, -0.185, 0.004) },
+    via: [{ node: 'femur', p: P(-0.022, -0.360, 0.028) }],
+    insertion: { node: 'shank', p: P(0, -0.048, 0.026) },
+    pull: [['kneeExtension', 1.0]],
+    note: '太ももの内側。膝のすぐ上で膝蓋骨を安定させる。',
+  },
+  {
+    id: 'hamstrings', name: 'ハムストリング', short: 'ハム', color: 0x7a5fd9, radius: 0.030,
+    origin: { node: 'pelvis', p: P(0.056, -0.148, -0.052) },     // 坐骨結節
+    insertion: { node: 'shank', p: P(0.026, -0.052, -0.012) },   // 腓骨頭・脛骨内側
+    pull: [['kneeFlexion', 1.0], ['hipExtension', 0.6]],
+    note: '膝を曲げ股関節を伸ばす。後傾を止めるブレーキ。',
+  },
+  /* ---------------- 足首まわり ---------------- */
+  {
+    id: 'tibialisAnt', name: '前脛骨筋', short: '前脛骨筋', color: 0x4cc3ff, radius: 0.017,
+    origin: { node: 'shank', p: P(0.018, -0.095, 0.022) },
+    insertion: { node: 'shank', p: P(0.004, -0.400, 0.034) },    // 足首前面（内側楔状骨）
+    pull: [['ankleDorsi', 1.0]],
+    note: 'すねの前。ブーツのベロを押し続ける筋。',
+  },
+  {
+    id: 'triceps', name: '下腿三頭筋', short: 'ふくらはぎ', color: 0x59d9a4, radius: 0.030,
+    origin: { node: 'femur', p: P(0.010, -0.415, -0.022) },      // 大腿骨顆（腓腹筋）
+    via: [{ node: 'shank', p: P(0.002, -0.140, -0.034) }],
+    insertion: { node: 'shank', p: P(0.002, -0.408, -0.040) },   // 踵骨
+    pull: [['anklePlantar', 1.0]],
+    note: 'ふくらはぎ。ブーツの中で踵を押さえる。',
+  },
+  /* ---------------- 体幹 ---------------- */
+  {
+    id: 'obliques', name: '腹斜筋', short: '腹斜筋', color: 0xff6bd6, radius: 0.030,
+    origin: { node: 'spineT9', p: P(0.082, 0.014, 0.062) },      // 第5〜12肋骨の外面
+    via: [{ node: 'spineT12', p: P(0.112, 0.004, 0.052) }],      // 脇腹をまわり込む
+    insertion: { node: 'pelvis', p: P(0.070, 0.058, 0.066) },    // 腸骨稜・鼠径靭帯
+    pull: [['trunkRotation', 1.0], ['trunkLateral', 0.6]],
+    note: '体幹をひねる主役。外向はこの筋が作る。',
+  },
+  {
+    id: 'rectusAbd', name: '腹直筋', short: '腹直筋', color: 0xffa3d8, radius: 0.020,
+    origin: { node: 'spineT9', p: P(0.022, 0.020, 0.120) },
+    insertion: { node: 'pelvis', p: P(0.018, -0.062, 0.078) },   // 恥骨
+    pull: [['trunkFlexion', 1.0]],
+    note: '前に曲げる・骨盤を後ろに倒す。',
+  },
+  {
+    id: 'erector', name: '脊柱起立筋', short: '起立筋', color: 0x9b8cff, radius: 0.026,
+    origin: { node: 'pelvis', p: P(0.030, 0.030, -0.080) },      // 仙骨・腸骨稜
+    via: [{ node: 'spineT12', p: P(0.026, 0, -0.040) }],
+    insertion: { node: 'spineT6', p: P(0.024, 0, -0.045) },
+    pull: [['trunkExtension', 1.0], ['trunkLateral', 0.4]],
+    note: '背骨を立てる。前に潰れないよう支え続ける。',
+  },
+  {
+    id: 'quadratus', name: '腰方形筋', short: '腰方形筋', color: 0x59d9c8, radius: 0.018,
+    origin: { node: 'pelvis', p: P(0.056, 0.068, -0.028) },      // 腸骨稜
+    insertion: { node: 'spineT12', p: P(0.042, 0.012, -0.018) }, // 第12肋骨・腰椎横突起
+    pull: [['trunkLateral', 1.0]],
+    note: '骨盤と肋骨をつなぐ横の支え。外傾で骨盤の高さを保つ。',
+  },
+];
+
+/* ============================================================
+ * 帯（チューブ）の生成と更新
+ * ============================================================ */
+function createStrap(material, segs = 18, radial = 7) {
+  const geo = new THREE.BufferGeometry();
+  const count = (segs + 1) * (radial + 1);
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+  const idx = [];
+  for (let i = 0; i < segs; i++) {
+    for (let j = 0; j < radial; j++) {
+      const a = i * (radial + 1) + j, b = a + radial + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.frustumCulled = false;
+  mesh.userData.segs = segs;
+  mesh.userData.radial = radial;
+  return mesh;
+}
+
+const _t = new THREE.Vector3(), _n = new THREE.Vector3(), _b = new THREE.Vector3();
+const _prev = new THREE.Vector3(), _p = new THREE.Vector3();
+
+/** 制御点（ワールド座標）に沿って帯の頂点を更新する */
+function updateStrap(mesh, points, radius) {
+  const { segs, radial } = mesh.userData;
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
+  const pos = mesh.geometry.attributes.position;
+  const nor = mesh.geometry.attributes.normal;
+  // 初期の法線：接線と平行でない適当なベクトルから
+  curve.getTangentAt(0, _t).normalize();
+  _n.set(0, 1, 0);
+  if (Math.abs(_n.dot(_t)) > 0.9) _n.set(1, 0, 0);
+  _n.crossVectors(_t, _n).normalize();
+
+  let k = 0;
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    curve.getPointAt(u, _p);
+    curve.getTangentAt(u, _t).normalize();
+    // 平行移動フレーム：直前の法線を接線に直交化して持ち回る
+    _n.sub(_t.clone().multiplyScalar(_n.dot(_t))).normalize();
+    _b.crossVectors(_t, _n).normalize();
+    // 端を細く（筋腹を太く）
+    const taper = 0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, Math.max(0, u)));
+    const r = radius * taper;
+    for (let j = 0; j <= radial; j++) {
+      const th = (j / radial) * Math.PI * 2;
+      const nx = Math.cos(th), ny = Math.sin(th);
+      const vx = _n.x * nx + _b.x * ny, vy = _n.y * nx + _b.y * ny, vz = _n.z * nx + _b.z * ny;
+      pos.setXYZ(k, _p.x + vx * r, _p.y + vy * r, _p.z + vz * r);
+      nor.setXYZ(k, vx, vy, vz);
+      k++;
+    }
+  }
+  pos.needsUpdate = true;
+  nor.needsUpdate = true;
+}
+
+/**
+ * 筋のセットを作る。
+ * @param {number} H 身長
+ * @param {(name:string, side:string)=>THREE.Object3D} resolve 付着部の骨ノードを返す関数
+ */
+export function createMuscles(H, resolve) {
+  const S = H / 1.75;
+  const group = new THREE.Group();
+  group.name = 'muscles';
+  const items = [];
+
+  for (const def of MUSCLES) {
+    for (const side of ['L', 'R']) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: def.color, roughness: 0.55, metalness: 0.0,
+        transparent: true, opacity: 0.92,
+        emissive: new THREE.Color(def.color).multiplyScalar(0.10),
+      });
+      const mesh = createStrap(mat);
+      group.add(mesh);
+      items.push({ def, side, mesh, mat, base: new THREE.Color(def.color) });
+    }
+  }
+
+  const tmp = new THREE.Vector3();
+  /** 付着部（ローカル）をワールド座標へ */
+  function world(att, side) {
+    const node = resolve(att.node, side);
+    if (!node) return null;
+    // 骨盤・脊柱のローカル +x は「左」なので右側は反転する。
+    // 大腿骨・脛骨は右脚のノード自体が鏡像になっているので反転しない。
+    const mirrored = att.node === 'femur' || att.node === 'shank';
+    const sx = mirrored ? 1 : (side === 'L' ? 1 : -1);
+    tmp.set(att.p[0] * sx * S, att.p[1] * S, att.p[2] * S);
+    return node.localToWorld(tmp.clone());
+  }
+
+  /**
+   * 位置と色を更新する。
+   * @param {Object} act 筋 id → 活動度 0..1
+   */
+  function update(act = {}) {
+    for (const it of items) {
+      const { def, side, mesh } = it;
+      const pts = [];
+      const o = world(def.origin, side);
+      if (!o) { mesh.visible = false; continue; }
+      pts.push(o);
+      for (const v of def.via || []) { const w = world(v, side); if (w) pts.push(w); }
+      const ins = world(def.insertion, side);
+      if (!ins) { mesh.visible = false; continue; }
+      pts.push(ins);
+      mesh.visible = true;
+      updateStrap(mesh, pts, def.radius * S);
+
+      // 活動度に応じて色を変える（休んでいる＝くすんだ色、働く＝鮮やか）
+      const a = THREE.MathUtils.clamp(act[def.id + side] ?? act[def.id] ?? 0, 0, 1);
+      it.mat.color.copy(it.base).lerp(new THREE.Color(0x6a7482), 1 - a).lerp(it.base, a);
+      it.mat.color.copy(new THREE.Color(0x5b6472).lerp(it.base, 0.25 + 0.75 * a));
+      it.mat.emissive.copy(it.base).multiplyScalar(0.05 + 0.45 * a);
+      it.mat.opacity = 0.55 + 0.42 * a;
+    }
+  }
+
+  return {
+    group, items, update,
+    setOpacity(o) {
+      for (const it of items) { it.mat.opacity = o; it.mat.transparent = o < 1; }
+    },
+  };
+}
