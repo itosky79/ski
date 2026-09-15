@@ -80,8 +80,12 @@ function makeModel(d, ghost = false) {
     angulationDeg: ghost ? 0 : Math.round(d.angulationDeg * lv.angulationScale),
     kneeAngulationDeg: ghost ? 0 : d.kneeAngulationDeg,
     stanceWidth: d.stanceWidth,
-    innerLead: d.innerLead,
-    glideFactor: d.glideFactor,
+    glideFactor: d.glideFactor, glideAmp: d.glideAmp,
+    skew: d.skew, gateLag: d.gateLag,
+    outerShareMax: d.outerShareMax, outerShareLate: d.outerShareLate,
+    gammaPelvis: d.gammaPelvis, activePelvis: d.activePelvis,
+    gammaSpine: d.gammaSpine, activeSpine: d.activeSpine,
+    innerEdgeExtraDeg: d.innerEdgeExtraDeg, leadFactor: d.leadFactor,
     skiSidecutR: d.skiSidecutR,
     height: ANTHRO.height, mass: ANTHRO.mass,
   });
@@ -220,12 +224,13 @@ function buildSeries() {
  */
 function pelvisMotions(s) {
   const a = skier.state.anchors;
-  if (!a.pelvisFwd || !a.outerAnkle) return { yaw: 0, hip: 0, shin: 0 };
+  if (!a.pelvisFwd || !a.outerAnkle) return { yaw: 0, spine: 0, hip: 0, shin: 0 };
   const yaw = deg(s.counter);
+  const spine = deg(s.counterSpine ?? s.counter);
   const hip = deg(Math.acos(THREE.MathUtils.clamp(a.pelvisUp.dot(s.legDir), -1, 1)));
   const shinDir = a.outerKnee.clone().sub(a.outerAnkle).normalize();
   const shin = deg(Math.asin(THREE.MathUtils.clamp(shinDir.dot(s.tangent), -1, 1)));
-  return { yaw, hip, shin };
+  return { yaw, spine, hip, shin };
 }
 
 /** 外脚の股関節（骨盤から見た大腿骨の向き） */
@@ -340,11 +345,11 @@ function tick() {
 
   const s = model.sample(app.u);
   const look = nextGateTarget(app.u);
-  skier.update(s, { lookTarget: look, innerLead: disc.innerLead });
+  skier.update(s, { lookTarget: look });
   if (app.show.ghost) {
     // 比較用のゴーストは横に 2.6 m ずらして「並走」させる
     const gs = ghostModel.sample(app.u);
-    ghost.update(gs, { lookTarget: look, innerLead: disc.innerLead });
+    ghost.update(gs, { lookTarget: look });
     ghost.root.position.add(model.C.clone().multiplyScalar(GHOST_OFFSET));
     labels.set('ghost', '外向・外傾なし（内傾だけ）',
       ghost.state.anchors.head.clone().addScaledVector(model.C, GHOST_OFFSET)

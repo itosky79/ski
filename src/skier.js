@@ -277,17 +277,21 @@ export function createSkier(opts = {}) {
     const hipL = pelvisPos.clone().addScaledVector(right, -pelvis.hipHalfWidth)
       .addScaledVector(pelvisUp, -0.040 * pelvis.scale);
 
-    /* --- スキーと足首 --- */
-    // スキー面の法線：斜面法線を進行方向軸まわりにエッジ角ぶん内側へ倒す
-    const skiNormal = rotateToward(s.normal, s.inward, s.tangent, s.edgeAngle).normalize();
-    // スキーのローカル軸：x = skiSide, y = skiNormal, z = tangent（右手系）
-    const skiSide = new THREE.Vector3().crossVectors(skiNormal, s.tangent).normalize();
+    /* --- スキーと足首 ---
+     * 内スキーは外スキーより少し多く傾き、トップが前に出る（＝内足の先行）。
+     * 先行量はエッジ角から決まる量なので、切り替えでは自然にそろう。 */
+    const skiNormalOuter = rotateToward(s.normal, s.inward, s.tangent, s.edgeAngle).normalize();
     const feet = { R: s.footR.clone(), L: s.footL.clone() };
-    const ankles = {}, skiCenters = {};
+    const ankles = {}, skiCenters = {}, skiNormals = {};
     for (const side of ['L', 'R']) {
       const isOuter = (side === 'R') === outwardIsRight;
-      // 内足はわずかに前に出る（内脚の先行）
-      const lead = isOuter ? 0 : (cfg.innerLead ?? 0.12);
+      const edge = isOuter ? s.edgeAngle : s.edgeAngleInner;
+      const skiNormal = rotateToward(s.normal, s.inward, s.tangent, edge).normalize();
+      // スキーのローカル軸：x = skiSide, y = skiNormal, z = tangent（右手系）
+      const skiSide = new THREE.Vector3().crossVectors(skiNormal, s.tangent).normalize();
+      skiNormals[side] = skiNormal;
+
+      const lead = isOuter ? 0 : s.innerLead;
       const contact = feet[side].clone().addScaledVector(s.tangent, lead);
       // 接雪しているのはエッジ。板の中心はそこから半幅ぶん外側
       const toOutward = skiSide.dot(s.outward) > 0 ? 1 : -1;
@@ -305,9 +309,10 @@ export function createSkier(opts = {}) {
       boots[side].position.copy(center).addScaledVector(skiNormal, 0.125);
       boots[side].quaternion.copy(ski.quaternion);
     }
+    const skiNormal = skiNormalOuter;
 
     /* --- 脚（2 リンク IK） --- */
-    const kneeHint = s.tangent.clone().multiplyScalar(1).addScaledVector(skiNormal, 0.35).normalize();
+    const kneeHint = s.tangent.clone().addScaledVector(skiNormal, 0.72).normalize();
     const hips = { L: hipL, R: hipR };
     const legBasis = {};
     for (const side of ['L', 'R']) {
@@ -323,8 +328,9 @@ export function createSkier(opts = {}) {
     /* --- 脊柱・胸郭 --- */
     const lumbarBase = pelvisPos.clone().addScaledVector(pelvisUp, 0.055 * pelvis.scale);
     const chestPos = lumbarBase.clone().addScaledVector(s.torsoDir, seg.trunk * 0.92);
-    // 胸は骨盤よりさらに谷を向く（上体の先行）
-    let chestFwd = rotateToward(fwd, s.outward, s.torsoDir, s.counter * 0.18).normalize();
+    // 肩は骨盤よりさらに大きく谷を向く（実測でも上体の外向は骨盤の約 2 倍）
+    const spineExtra = (s.counterSpine ?? s.counter) - s.counter;
+    let chestFwd = rotateToward(fwd, s.outward, s.torsoDir, spineExtra).normalize();
     chestFwd = chestFwd.projectOnPlane(s.torsoDir).normalize();
     const chestRight = new THREE.Vector3().crossVectors(chestFwd, s.torsoDir).normalize();
     const chestLeft = chestRight.clone().negate();

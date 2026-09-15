@@ -110,13 +110,14 @@ export class Course {
 
     /* --- シュプール（両スキーの通り道） --- */
     this.tracksG.clear();
-    const half = model.p.stanceWidth / 2;
     for (const sgn of [1, -1]) {
       const pts = [];
       for (let i = 0; i <= 400; i++) {
         const u = -model.halfCycle + (len + model.halfCycle) * (i / 400);
         const w1 = model.dw(u);
         const eLat = new THREE.Vector3().addScaledVector(D, -w1).addScaledVector(C, 1).normalize();
+        // スタンス幅はエッジ角とともに変わるので、シュプールの間隔も一定ではない
+        const half = model.sample(Math.max(0, u)).stance / 2;
         pts.push(model.trackPoint(u, 0.012).addScaledVector(eLat, sgn * half));
       }
       const geo = new THREE.BufferGeometry().setFromPoints(pts);

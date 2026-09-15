@@ -88,6 +88,7 @@ export class UI {
       { k: 'speed', label: '速度', unit: 'km/h' },
       { k: 'radius', label: '旋回半径', unit: 'm' },
       { k: 'counter', label: '外向角（骨盤）', unit: '°', hi: '--outer' },
+      { k: 'counterSpine', label: '外向角（上体）', unit: '°', hi: '--outer' },
       { k: 'angulation', label: '外傾角（腰）', unit: '°', hi: '--inner' },
       { k: 'inclination', label: '内傾角（力学）', unit: '°' },
       { k: 'edge', label: 'エッジ角', unit: '°' },
@@ -96,9 +97,13 @@ export class UI {
       { k: 'carve', label: 'カービング判定', unit: '', wide: true },
     ];
     this.motionDefs = [
-      { k: 'yaw', name: '回旋（外向）', range: 40, color: 'var(--outer)',
+      { k: 'yaw', name: '回旋（外向・骨盤）', range: 40, color: 'var(--outer)',
         hint: (v) => v > 3 ? '骨盤がターン外側を向いています（＝外向）'
-                           : 'スキーと正対しています' },
+                   : v < -3 ? 'まだ前のターンの向きに残っています（切り替え直後）'
+                            : 'スキーと正対しています' },
+      { k: 'spine', name: '回旋（外向・上体）', range: 50, color: '#ff9a7a',
+        hint: (v) => v > 5 ? '肩は骨盤よりさらに谷を向きます（差は背骨のひねり）'
+                   : v < -5 ? '肩もまだ前のターン向き' : '肩もほぼ正対' },
       { k: 'hip', name: '腰の折れ（股関節の外傾）', range: 30, color: 'var(--inner)',
         hint: (v) => v > 3 ? '外脚の付け根で上体を起こしています'
                            : '股関節はまっすぐ（上体は脚の延長）' },
@@ -369,6 +374,7 @@ export class UI {
     set('speed', (s.speed * 3.6).toFixed(0));
     set('radius', s.radius === Infinity || s.radius > 200 ? '∞' : s.radius.toFixed(1));
     set('counter', deg(s.counter).toFixed(0));
+    set('counterSpine', deg(s.counterSpine ?? s.counter).toFixed(0));
     set('angulation', deg(s.angulation).toFixed(0));
     set('inclination', deg(s.inclination).toFixed(0));
     set('edge', deg(s.edgeAngle).toFixed(0));
@@ -389,7 +395,7 @@ export class UI {
       $('#hud-load').textContent = `${s.loadBW.toFixed(1)}×`;
     }
     $('#phase-name').textContent = s.phaseInfo.name;
-    $('#phase-desc').textContent = s.phaseInfo.desc;
+    $('#phase-desc').innerHTML = s.phaseInfo.desc;
 
     this.drawCompass(s);
     if (this.series) this.drawChart(this.series, s.phase);
@@ -410,6 +416,7 @@ export class UI {
 
     const sign = s.eLat.dot(s.outward) > 0 ? 1 : -1;   // 外側が右なら +1
     const counter = deg(s.counter) * sign;
+    const spine = deg(s.counterSpine ?? s.counter) * sign;
     const fall = -deg(s.turnAngle) * Math.sign(s.tangent.dot(s.eLat) || 1) * sign * sign;
 
     const arrow = (angDeg, len, color, width, dash = false) => {
@@ -437,19 +444,24 @@ export class UI {
     }
 
     arrow(0, R * 0.92, '#ffffff', 2.5);                     // スキーの進行方向
+    arrow(spine, R * 0.88, 'rgba(255,154,122,.95)', 2.5);   // 肩（上体）の正面
     arrow(counter, R * 0.82, '#4cc3ff', 3.5);               // 骨盤の正面
     arrow(fall, R * 0.6, 'rgba(255,209,102,.85)', 2, true); // フォールライン
 
     g.fillStyle = '#eaf1fb';
     g.font = '700 13px system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.fillText(`外向 ${Math.abs(counter).toFixed(0)}°`, cx, 16);
+    g.textAlign = 'left';
+    g.fillText(`外向 ${counter >= 0 ? '' : '−'}${Math.abs(counter).toFixed(0)}°`, 8, 16);
     g.font = '10px system-ui, sans-serif';
     g.fillStyle = 'rgba(255,255,255,.55)';
-    g.fillText('スキー', cx + (sign > 0 ? -34 : 34), cy - R * 0.9);
+    g.textAlign = 'center';
+    g.fillText('スキー', cx, cy - R * 0.98 - 4);
     g.fillStyle = 'rgba(76,195,255,.9)';
     g.fillText('骨盤', cx + Math.cos((-90 + counter) * Math.PI / 180) * R * 0.95 + (sign > 0 ? 14 : -14),
       cy + Math.sin((-90 + counter) * Math.PI / 180) * R * 0.95);
+    g.fillStyle = 'rgba(255,154,122,.95)';
+    g.fillText('肩', cx + Math.cos((-90 + spine) * Math.PI / 180) * R * 1.02 + (sign > 0 ? 16 : -16),
+      cy + Math.sin((-90 + spine) * Math.PI / 180) * R * 1.02);
   }
 
   /** 1 ターンの推移グラフ */

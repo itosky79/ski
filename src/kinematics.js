@@ -30,6 +30,10 @@ import * as THREE from 'three';
 import { G, PHASES, SEGMENT_MASS } from './constants.js';
 
 const TAU = Math.PI * 2;
+const smoothstep = (e0, e1, x) => {
+  const t = THREE.MathUtils.clamp((x - e0) / (e1 - e0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 export const deg = (r) => r * 180 / Math.PI;
 export const rad = (d) => d * Math.PI / 180;
 
@@ -56,7 +60,25 @@ export class TurnModel {
       poleClearance: 0.35,
       // 重力の斜面方向成分のうち、加速に使われる割合（残りはエッジで受け止める）。
       // 1 なら自由滑降＝身体は斜面に垂直、0 なら等速＝身体は斜面の角度ぶん後ろに残る。
-      glideFactor: 0.55,
+      glideFactor: 0.45,
+      // 前後のポジションの変化。ターン前半は加速して身体が前に、
+      // 後半はエッジで減速して後ろに残る。実際のレーサーも同じように前後に動く。
+      glideAmp: 0.30,
+      // 軌跡のゆがみ。0 なら左右対称の正弦波。正の値で「方向転換を旗門の上で終える」
+      // 現代のライン取りになる（前半がきつく、後半は伸びる）。
+      skew: 0.03,
+      // 旗門を軌跡の頂点よりどれだけ下に置くか（1 ターンに対する割合）
+      gateLag: 0.09,
+      // 外脚の荷重配分：フォールライン付近の最大値と、山回り後半の値
+      outerShareMax: 0.80,
+      outerShareLate: 0.60,
+      // 外向の作られ方（幾何ぶん × gamma ＋ 意識的なぶん × active）
+      gammaPelvis: 0.55, activePelvis: 0.25,
+      gammaSpine: 1.15, activeSpine: 0.45,
+      // 内スキーは外スキーより少し多く傾ける
+      innerEdgeExtraDeg: 5,
+      // トップの前後差（ステップ量）は、スタンス幅とエッジ角から決まる
+      leadFactor: 0.35,
     }, params);
     this.rebuild();
   }
@@ -88,17 +110,41 @@ export class TurnModel {
       rMin = Math.min(rMin, d.radius);
     }
     this.loadMin = loadMin; this.loadMax = loadMax; this.radiusMin = rMin;
-    for (const d of raw) {
-      const ln = (d.loadBW - loadMin) / Math.max(1e-6, loadMax - loadMin);
-      shapeMax = Math.max(shapeMax, d.turnAngle * (0.55 + 0.45 * ln));
+    this.geomMax = Math.max(...raw.map((d) => Math.abs(d.counterGeom)), 1e-6);
+    for (let i = 0; i < raw.length; i++) {
+      shapeMax = Math.max(shapeMax, this._counterShape(raw[i], i / (NS - 1)).pelvis);
     }
-    this.counterShapeMax = shapeMax;
+    this.counterShapeMax = Math.max(shapeMax, 1e-6);
   }
 
-  /* ---------- 軌跡 ---------- */
-  w(u)   { return this.A * Math.sin(this.k * u); }
-  dw(u)  { return this.A * this.k * Math.cos(this.k * u); }
-  ddw(u) { return -this.A * this.k * this.k * Math.sin(this.k * u); }
+  /**
+   * 外向の形。骨盤と上体（肩）で大きさが違う。
+   *   幾何ぶん  : 身体はフォールラインを向き続けるので、スキーとの差がそのまま外向になる
+   *   意識ぶん  : 山回りでさらに骨盤を外へ向ける動き（後半で立ち上がる）
+   */
+  _counterShape(d, phase) {
+    const P = this.p;
+    const g = d.counterGeom;
+    const act = smoothstep(0.15, 0.78, phase) * this.geomMax;
+    return {
+      pelvis: P.gammaPelvis * g + P.activePelvis * act,
+      spine: P.gammaSpine * g + P.activeSpine * act,
+    };
+  }
+
+  /* ---------- 軌跡 ----------
+   * θ(u) = k·u + ε·sin(2k·u) と位相をゆがませることで、
+   * 左右の対称性を保ったまま「前半がきつく後半が伸びる」弧にする。
+   * ε = 0 なら従来どおりの正弦波。 */
+  theta(u)  { return this.k * u + this.p.skew * Math.sin(2 * this.k * u); }
+  dtheta(u) { return this.k * (1 + 2 * this.p.skew * Math.cos(2 * this.k * u)); }
+  ddtheta(u) { return -4 * this.k * this.k * this.p.skew * Math.sin(2 * this.k * u); }
+  w(u)   { return this.A * Math.sin(this.theta(u)); }
+  dw(u)  { return this.A * Math.cos(this.theta(u)) * this.dtheta(u); }
+  ddw(u) {
+    const th = this.theta(u), d = this.dtheta(u);
+    return -this.A * Math.sin(th) * d * d + this.A * Math.cos(th) * this.ddtheta(u);
+  }
 
   onSlope(u, w, lift = 0) {
     return new THREE.Vector3()
@@ -129,10 +175,13 @@ export class TurnModel {
 
     // 求心加速度
     const accel = eLat.clone().multiplyScalar(this.v * this.v * kappa);
-    // 進行方向の加速度：重力の斜面成分のうち glideFactor ぶんが加速に回る。
-    // （等速と仮定すると身体が必ず後傾になってしまうため）
+    // 進行方向の加速度：重力の斜面成分のうち glide ぶんが加速に回る。
+    // glide は位相で変わる（前半は加速＝前に乗る、後半は減速＝後ろに残る）。
+    const phase = (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle;
+    const glide = this.p.glideFactor
+      + this.p.glideAmp * Math.cos(TAU * (phase - 0.25));
     const gAlong = G * Math.sin(this.slopeRad) / Math.sqrt(den);
-    accel.addScaledVector(tangent, this.p.glideFactor * gAlong);
+    accel.addScaledVector(tangent, glide * gAlong);
 
     // 雪面反力（単位質量）
     const gVec = new THREE.Vector3(0, -G, 0);
@@ -145,9 +194,14 @@ export class TurnModel {
     // 内傾角：前額面で見た「脚の線」と斜面法線のなす角（+ が内側）
     const lambda = Math.atan2(uLeg.dot(inward), uLeg.dot(this.N));
     const turnAngle = Math.abs(Math.atan(w1));        // スキーとフォールラインの角度
+    // 符号つきの「スキーとフォールラインのずれ」。
+    // ターン前半は負（上体はまだ次のターンの内側を向いている）、
+    // フォールラインで 0、後半で正（＝外向）になる。身体はフォールラインを向き続けるので、
+    // この量がそのまま外向の素になる。
+    const counterGeom = Math.atan(w1) * turnSign;
 
     return { u, cycle, tangent, eLat, inward, outward, kappa, radius, turnSign, accel,
-             fPerMass, loadBW, uLeg, lambda, turnAngle };
+             fPerMass, loadBW, uLeg, lambda, turnAngle, counterGeom, glide };
   }
 
   /**
@@ -184,9 +238,10 @@ export class TurnModel {
     const loadNorm = THREE.MathUtils.clamp(
       (d.loadBW - this.loadMin) / Math.max(1e-6, this.loadMax - this.loadMin), 0, 1);
 
-    // 外向角：骨盤はスキーほど回らない。その差が外向角。
-    const shape = d.turnAngle * (0.55 + 0.45 * loadNorm) / this.counterShapeMax;
-    const counter = rad(P.counterDeg) * shape;
+    // 外向角：骨盤と上体で大きさが違う（上体のほうが大きく谷を向く）
+    const cs = this._counterShape(d, (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle);
+    const counter = rad(P.counterDeg) * cs.pelvis / this.counterShapeMax;
+    const counterSpine = rad(P.counterDeg) * cs.spine / this.counterShapeMax;
 
     // 外傾角・膝の角度は荷重に応じて深くなる
     const angulation = rad(P.angulationDeg) * Math.pow(loadNorm, 0.75);
@@ -203,19 +258,32 @@ export class TurnModel {
     const legDir = rotateToward(d.uLeg, d.inward, axis, fr.phiLeg - d.lambda);
     const torsoDir = rotateToward(d.uLeg, d.inward, axis, fr.phiTorso - d.lambda);
 
-    const edgeAngle = fr.phiLeg + kneeAng;            // スキーのエッジ角
+    const edgeAngle = fr.phiLeg + kneeAng;            // 外スキーのエッジ角
+    const edgeAngleInner = edgeAngle + rad(P.innerEdgeExtraDeg) * loadNorm;
     const ratio = THREE.MathUtils.clamp(d.radius / P.skiSidecutR, 0, 1);
     const edgeNeeded = Math.acos(ratio);              // サイドカット理論の必要エッジ角
     const carving = edgeAngle >= edgeNeeded - rad(2);
 
-    // 両スキーの中心線（軌跡）と、実際の圧の中心
-    //   切り替えでは荷重が左右に分かれるので圧中心はスタンス中央、
-    //   フォールラインでは外スキーに集中する（外脚荷重 50 % → 95 %）
+    /* --- 足もと ---
+     * スタンス幅とトップの前後差（内スキーの先行）は、意識して作るものではなく
+     * エッジ角の結果として現れる。エッジが寝れば自然に消える。 */
+    const phase0 = (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle;
+    const edgeSin = Math.max(0, Math.sin(Math.max(0, edgeAngle)));
+    const stance = P.stanceWidth * (0.72 + 0.48 * edgeSin);
+    const innerLead = Math.min(0.32, stance * Math.tan(
+      THREE.MathUtils.clamp(edgeAngle, 0, rad(78))) * P.leadFactor);
+
     const trackCenter = this.trackPoint(u);
-    const half = P.stanceWidth / 2;
+    const half = stance / 2;
     const footR = trackCenter.clone().addScaledVector(d.eLat, half);   // 右足（進行方向に対して右）
     const footL = trackCenter.clone().addScaledVector(d.eLat, -half);
-    const outerShare = 0.5 + 0.45 * Math.pow(loadNorm, 0.6);           // 外脚の荷重配分
+
+    /* 外脚の荷重配分：切り替えで 50 %、フォールライン手前で最大、
+       山回り後半は内スキーにも乗るので下がる（実測でも 80:20 → 60:40） */
+    const rise = smoothstep(0.02, 0.40, phase0);
+    const fall = smoothstep(0.55, 0.95, phase0);
+    const outerShare = 0.5 + (P.outerShareMax - 0.5) * rise
+      - (P.outerShareMax - P.outerShareLate) * fall;
     const pressure = trackCenter.clone()
       .addScaledVector(d.outward, half * (2 * outerShare - 1));
 
@@ -231,6 +299,7 @@ export class TurnModel {
       u, phase, phaseInfo: phaseInfo(phase), cycle: d.cycle,
       pos: trackCenter, pressure, com, hip, legLen, torsoLen,
       footL, footR, outerFoot, innerFoot, outerIsRight, outerShare,
+      stance, innerLead, edgeAngleInner, counterSpine,
       tangent: d.tangent, eLat: d.eLat, inward: d.inward, outward: d.outward,
       turnSign: d.turnSign,
       normal: this.N, fallLine: this.D,
@@ -255,9 +324,12 @@ export class TurnModel {
     const out = [];
     for (let i = 0; i < count; i++) {
       const cycle = startCycle + i;
-      const u = this.L / 4 + cycle * this.halfCycle;
-      const s = Math.sign(Math.sin(this.k * u)) || 1;
-      const wTurn = s * Math.max(0.1, this.A - this.p.poleClearance);
+      // 現代のライン取りでは方向転換を旗門の上で終えるので、
+      // 旗門は軌跡の頂点より少し下に立つ
+      const uApex = this.L / 4 + cycle * this.halfCycle;
+      const u = uApex + this.p.gateLag * this.halfCycle;
+      const s = Math.sign(Math.sin(this.theta(uApex))) || 1;
+      const wTurn = s * Math.max(0.1, Math.abs(this.w(u)) - this.p.poleClearance);
       out.push({
         index: cycle, u, side: s,
         color: (((cycle % 2) + 2) % 2 === 0) ? 'red' : 'blue',
