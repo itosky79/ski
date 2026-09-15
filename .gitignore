@@ -1,9 +1,6 @@
 node_modules/
 *.log
 .DS_Store
-.test-shot.mjs
-.test-pose.mjs
-.test-ui.mjs
-.test-doc.mjs
-.test-cdn.mjs
-.test-chart.mjs
+
+# 動作確認用のスクリプト（コミットしない）
+.test-*.mjs
