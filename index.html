@@ -41,10 +41,20 @@
     </div>
 
     <div class="topgroup right">
-      <button id="btn-help" class="ghost" title="使い方と用語（H）">？ 用語</button>
-      <button id="btn-panels" class="ghost" title="パネル表示切替（Tab）">▤</button>
+      <button id="btn-sheet-ctrl" class="ghost only-narrow">操作</button>
+      <button id="btn-sheet-data" class="ghost only-narrow">数値</button>
+      <button id="btn-help" class="ghost" title="使い方と用語（H）">？</button>
+      <button id="btn-panels" class="ghost only-wide" title="パネル表示切替（Tab）">▤</button>
     </div>
   </header>
+
+  <!-- ===== 狭い画面用の常時表示バー ===== -->
+  <div id="hud" aria-hidden="true">
+    <span class="hud-phase">—</span>
+    <span class="hud-item"><i>外向</i><b id="hud-counter">—</b></span>
+    <span class="hud-item"><i>内傾</i><b id="hud-incl">—</b></span>
+    <span class="hud-item"><i>荷重</i><b id="hud-load">—</b></span>
+  </div>
 
   <!-- ===== 左パネル：操作 ===== -->
   <aside id="panel-left" class="panel">
@@ -135,6 +145,13 @@
     <section class="block">
       <h2>骨盤の動き</h2>
       <div class="motions" id="pelvis-motions"></div>
+    </section>
+
+    <section class="block">
+      <h2>外脚の股関節（大腿骨の動き）</h2>
+      <div class="motions" id="hip-motions"></div>
+      <p class="hint">骨盤から見た大腿骨の向きです。<b>外向</b>は骨盤を外へ回すので、
+        外脚の股関節では<b>内旋</b>として現れます。</p>
     </section>
 
     <section class="block">

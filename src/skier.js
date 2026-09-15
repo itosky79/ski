@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { ANTHRO, SEGMENT_MASS, BONE_COLORS } from './constants.js';
 import { createPelvis } from './pelvis.js';
+import { createLegBones } from './leg.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -143,6 +144,8 @@ export function createSkier(opts = {}) {
 
   /* --- マテリアル --- */
   const boneMat = new THREE.MeshStandardMaterial({ color: 0xe8eef7, roughness: 0.5 });
+  // 下肢の骨は骨盤ビューでも見せたいので別マテリアルにする
+  const legMat = new THREE.MeshStandardMaterial({ color: 0xeef3fa, roughness: 0.45 });
   const jointMat = new THREE.MeshStandardMaterial({ color: 0xc7d4e4, roughness: 0.45 });
   const outerMat = new THREE.MeshStandardMaterial({ color: BONE_COLORS.iliumOuter.hex, roughness: 0.45 });
   const innerMat = new THREE.MeshStandardMaterial({ color: BONE_COLORS.iliumInner.hex, roughness: 0.45 });
@@ -179,11 +182,12 @@ export function createSkier(opts = {}) {
   );
   skeleton.add(ribCage);
 
-  /* 四肢の骨 */
-  const femur = { L: makeLink(boneMat, 0.023), R: makeLink(boneMat, 0.023) };
-  const tibia = { L: makeLink(boneMat, 0.019), R: makeLink(boneMat, 0.019) };
-  const knee = { L: makeBall(jointMat, 0.033), R: makeBall(jointMat, 0.033) };
-  const ankleB = { L: makeBall(jointMat, 0.025), R: makeBall(jointMat, 0.025) };
+  /* 下肢：大腿骨・膝蓋骨・脛骨・腓骨（解剖学的な形） */
+  const legs = { L: createLegBones(H, -1, legMat), R: createLegBones(H, 1, legMat) };
+  skeleton.add(legs.L.group, legs.R.group);
+  const kneePos = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+
+  /* 上肢の骨 */
   const humerus = { L: makeLink(boneMat, 0.017), R: makeLink(boneMat, 0.017) };
   const ulna = { L: makeLink(boneMat, 0.014), R: makeLink(boneMat, 0.014) };
   const elbow = { L: makeBall(jointMat, 0.023), R: makeBall(jointMat, 0.023) };
@@ -191,7 +195,7 @@ export function createSkier(opts = {}) {
   const clavicle = makeLink(boneMat, 0.013);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(seg.headR, 18, 14), boneMat);
   for (const s of ['L', 'R']) {
-    skeleton.add(femur[s], tibia[s], knee[s], ankleB[s], humerus[s], ulna[s], elbow[s], shoulderB[s]);
+    skeleton.add(humerus[s], ulna[s], elbow[s], shoulderB[s]);
   }
   skeleton.add(clavicle, skull);
 
@@ -259,7 +263,9 @@ export function createSkier(opts = {}) {
     let fwd = s.tangent.clone().projectOnPlane(pelvisUp).normalize();
     fwd = rotateToward(fwd, s.outward, pelvisUp, s.counter).normalize();
     const right = new THREE.Vector3().crossVectors(fwd, pelvisUp).normalize();
-    const pelvisM = new THREE.Matrix4().makeBasis(right, pelvisUp, fwd);
+    // three.js のオブジェクトは +Z を向くので、右手系の基底は（左, 上, 前）になる
+    const left = right.clone().negate();
+    const pelvisM = new THREE.Matrix4().makeBasis(left, pelvisUp, fwd);
 
     const pelvisPos = s.hip.clone();
     pelvisNode.position.copy(pelvisPos);
@@ -303,19 +309,15 @@ export function createSkier(opts = {}) {
     /* --- 脚（2 リンク IK） --- */
     const kneeHint = s.tangent.clone().multiplyScalar(1).addScaledVector(skiNormal, 0.35).normalize();
     const hips = { L: hipL, R: hipR };
+    const legBasis = {};
     for (const side of ['L', 'R']) {
       const kp = solveIK(hips[side], ankles[side], seg.thigh, seg.shank, kneeHint);
-      knee[side].position.copy(kp);
-      ankleB[side].position.copy(ankles[side]);
-      femur[side].userData.set(hips[side], kp);
-      tibia[side].userData.set(kp, ankles[side]);
+      kneePos[side].copy(kp);
+      legBasis[side] = legs[side].update(hips[side], kp, ankles[side], kneeHint);
       fleshThigh[side].userData.set(hips[side], kp);
       fleshShank[side].userData.set(kp, ankles[side]);
       state.angles[`knee${side}`] = Math.PI - angleBetween(
         hips[side].clone().sub(kp), ankles[side].clone().sub(kp));
-      // 大腿骨頸部と大転子を実際の脚の向きに合わせる（股関節の動きが見える）
-      const d = kp.clone().sub(hips[side]).normalize();
-      pelvis.setFemurDir(side, new THREE.Vector3(d.dot(right), d.dot(pelvisUp), d.dot(fwd)));
     }
 
     /* --- 脊柱・胸郭 --- */
@@ -325,6 +327,7 @@ export function createSkier(opts = {}) {
     let chestFwd = rotateToward(fwd, s.outward, s.torsoDir, s.counter * 0.18).normalize();
     chestFwd = chestFwd.projectOnPlane(s.torsoDir).normalize();
     const chestRight = new THREE.Vector3().crossVectors(chestFwd, s.torsoDir).normalize();
+    const chestLeft = chestRight.clone().negate();
 
     for (let i = 0; i < spineSegs.length; i++) {
       const t0 = i / spineSegs.length, t1 = (i + 1) / spineSegs.length;
@@ -338,7 +341,7 @@ export function createSkier(opts = {}) {
     ribCage.position.copy(lumbarBase.clone().lerp(chestPos, 0.62));
     ribCage.scale.set(seg.shoulderW * 0.42, seg.trunk * 0.33, seg.shoulderW * 0.30);
     ribCage.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(chestRight, s.torsoDir, chestFwd));
+      new THREE.Matrix4().makeBasis(chestLeft, s.torsoDir, chestFwd));
 
     torsoMesh.position.copy(lumbarBase.clone().lerp(chestPos, 0.52));
     torsoMesh.scale.set(seg.shoulderW * 0.46, seg.trunk * 0.62, seg.shoulderW * 0.34);
@@ -388,10 +391,10 @@ export function createSkier(opts = {}) {
     const headRight = new THREE.Vector3().crossVectors(lookDir, headUp).normalize();
     const headFwd = new THREE.Vector3().crossVectors(headUp, headRight).normalize();
     helmet.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(headRight, headUp, headFwd));
+      new THREE.Matrix4().makeBasis(headRight.clone().negate(), headUp, headFwd));
 
     /* --- 重心：Dempster の質量比で実際の重心を求め、力学的な重心に合わせる --- */
-    const actual = computeCoM({ hips, knees: { L: knee.L.position, R: knee.R.position },
+    const actual = computeCoM({ hips, knees: { L: kneePos.L, R: kneePos.R },
       ankles, chestPos, lumbarBase, headPos, shoulders,
       elbows: { L: elbow.L.position, R: elbow.R.position } });
     const fix = s.com.clone().sub(actual);
@@ -409,7 +412,9 @@ export function createSkier(opts = {}) {
       head: headPos.clone().add(off),
       outerFoot: (outwardIsRight ? feet.R : feet.L).clone().add(off),
       innerFoot: (outwardIsRight ? feet.L : feet.R).clone().add(off),
-      outerKnee: (outwardIsRight ? knee.R.position : knee.L.position).clone().add(off),
+      outerKnee: (outwardIsRight ? kneePos.R : kneePos.L).clone().add(off),
+      outerHip: (outwardIsRight ? hipR : hipL).clone().add(off),
+      innerHip: (outwardIsRight ? hipL : hipR).clone().add(off),
       outerAnkle: (outwardIsRight ? ankles.R : ankles.L).clone().add(off),
       chest: chestPos.clone().add(off),
       asisMid: pelvisPos.clone().addScaledVector(fwd, 0.10).add(off),
@@ -423,6 +428,26 @@ export function createSkier(opts = {}) {
       skiNormal: skiNormal.clone(),
     };
     state.angles.hipShare = hipShare;
+
+    /* --- 外脚の股関節の角度（骨盤に対する大腿骨の向き） --- */
+    const outerSide = outwardIsRight ? 'R' : 'L';
+    const sgnOut = outwardIsRight ? 1 : -1;
+    const fem = kneePos[outerSide].clone().sub(hips[outerSide]).normalize();
+    const fx = fem.dot(right) * sgnOut;      // 外側成分（外転が +）
+    const fy = fem.dot(pelvisUp);            // 上下成分（下向きが −）
+    const fz = fem.dot(fwd);                 // 前後成分（屈曲が +）
+    state.angles.hipFlexion = Math.atan2(fz, -fy);
+    state.angles.hipAbduction = Math.atan2(fx, -fy);
+    // 回旋：膝の横軸が骨盤の横軸からどれだけ回っているか（内旋が +）
+    const femAxis = fem.clone();
+    const proj = (v) => v.clone().sub(femAxis.clone().multiplyScalar(v.dot(femAxis))).normalize();
+    const kneeRight = legBasis[outerSide].X.clone().negate();   // 基底の X は「左」
+    const a1 = proj(right), a2 = proj(kneeRight);
+    const sgn = Math.sign(new THREE.Vector3().crossVectors(a1, a2).dot(femAxis)) || 1;
+    const rot = sgn * Math.acos(THREE.MathUtils.clamp(a1.dot(a2), -1, 1));
+    state.angles.hipRotation = -rot * sgnOut;   // 内旋を + にする
+    state.outerSide = outerSide;
+
     return state;
   }
 
@@ -466,6 +491,9 @@ export function createSkier(opts = {}) {
         if (m.transparent !== on) m.needsUpdate = true;
         m.transparent = on; m.opacity = on ? 0.18 : 1; m.depthWrite = !on;
       }
+      // 大腿骨は股関節の主役なので、骨盤ビューでもはっきり見せる
+      if (legMat.transparent !== on) legMat.needsUpdate = true;
+      legMat.transparent = on; legMat.opacity = on ? 0.92 : 1; legMat.depthWrite = true;
       // 骨盤ビューでは身体（半透明シェル）とストックを隠す
       bodyG.visible = on ? false : bodyVisible;
       for (const s2 of ['L', 'R']) { poles[s2].visible = !on; }
@@ -474,7 +502,7 @@ export function createSkier(opts = {}) {
     setGhost(on) {
       const o = on ? 0.18 : 1;
       skinMat.opacity = on ? 0.10 : 0.32;
-      for (const m of [boneMat, jointMat, helmetMat, gearMat,
+      for (const m of [boneMat, jointMat, helmetMat, gearMat, legMat,
         skis.L.userData.mat, skis.R.userData.mat, poleMat]) {
         if (m.transparent !== on) m.needsUpdate = true;
         m.transparent = on; m.opacity = o; m.depthWrite = !on;

@@ -228,10 +228,62 @@ function pelvisMotions(s) {
   return { yaw, hip, shin };
 }
 
+/** 外脚の股関節（骨盤から見た大腿骨の向き） */
+function hipMotions() {
+  const a = skier.state.angles;
+  return {
+    flex: deg(a.hipFlexion ?? 0),
+    abd: deg(a.hipAbduction ?? 0),
+    rot: deg(a.hipRotation ?? 0),
+  };
+}
+
 /* ---------- ラベル ---------- */
 function updateLabels(s) {
   const a = skier.state.anchors;
-  const close = camRig.mode === 'pelvis' || camRig.dist < 4;
+  const pelvisView = camRig.mode === 'pelvis';
+  const close = pelvisView || camRig.dist < 4;
+  const narrow = size.w < 820;
+
+  if (pelvisView) {
+    // 骨盤クローズアップ：骨の名前と、骨盤まわりの角度だけ
+    const keep = narrow
+      ? ['crest', 'asis', 'sacrum', 'acetabulum', 'ischium']
+      : null;
+    for (const l of skier.pelvis.labelPoints()) {
+      if (keep && !keep.includes(l.key)) continue;
+      labels.set('bone_' + l.key, l.name, l.pos, 'small');
+    }
+    if (!narrow) {
+      // どちらの腸骨が「外側」かを示す
+      labels.set('bone_ilium', '腸骨（外側＝赤）',
+        a.pelvis.clone().addScaledVector(s.outward, 0.15)
+          .addScaledVector(a.pelvisUp, 0.075), 'small');
+    }
+    if (app.show.angles) {
+      labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`,
+        guides.anchors.counter ?? a.pelvis);
+      if (!narrow) {
+        labels.set('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`,
+          guides.anchors.angulation ?? a.pelvis, 'small');
+      }
+    }
+    return;
+  }
+
+  // 狭い画面はラベルが重なって読めなくなるので、要点だけに絞る
+  if (narrow) {
+    if (app.show.angles) {
+      labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`,
+        guides.anchors.counter ?? a.pelvis);
+    }
+    if (app.show.forces) {
+      labels.set('fn', `雪面反力 <b>${forceView.values.snowBW.toFixed(1)}×体重</b>`,
+        forceView.anchors.snow);
+    }
+    return;
+  }
+
   if (app.show.angles) {
     labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`, guides.anchors.counter ?? a.pelvis);
     labels.set('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`, guides.anchors.angulation ?? a.pelvis, 'small');
@@ -249,15 +301,6 @@ function updateLabels(s) {
     if (forceView.anchors.centrifugal) {
       labels.set('fc', `遠心力 ${(v.centrifugal / 9.80665).toFixed(0)} kgf`, forceView.anchors.centrifugal, 'small');
     }
-  }
-  if (camRig.mode === 'pelvis') {
-    for (const l of skier.pelvis.labelPoints()) {
-      labels.set('bone_' + l.key, l.name, l.pos, 'small');
-    }
-    labels.set('bone_iliumO', '腸骨（外）', a.pelvis.clone()
-      .addScaledVector(skier.state.anchors.pelvisRight,
-        (skier.state.anchors.pelvisRight.dot(s.outward) > 0 ? 1 : -1) * 0.17)
-      .addScaledVector(skier.state.anchors.pelvisUp, 0.06), 'small');
   }
 }
 
@@ -311,6 +354,7 @@ function tick() {
   guides.update(s, skier);
   ui.update(s);
   ui.updateMotions(pelvisMotions(s));
+  ui.updateMotions(hipMotions(), 'hip');
   updateLabels(s);
 
   // 太陽を追従させて影を出す
@@ -320,7 +364,7 @@ function tick() {
   camRig.update(model, s, skier.state, dt);
   renderer.render(scene, camera);
   labels.render(camera, size, skier.state.anchors.pelvis,
-                camRig.mode === 'pelvis' ? 130 : 96);
+                camRig.mode === 'pelvis' ? 130 : (size.w < 820 ? 76 : 96));
   requestAnimationFrame(tick);
 }
 
@@ -344,7 +388,7 @@ window.addEventListener('keydown', (e) => {
     case 'f': case 'F': ui.toggles.forces.checked = !ui.toggles.forces.checked;
       app.show.forces = ui.toggles.forces.checked; applyVisibility(); break;
     case 'h': case 'H': ui.toggleHelp(document.getElementById('help').hidden); break;
-    case 'Tab': e.preventDefault(); document.getElementById('btn-panels').click(); break;
+    case 'Tab': e.preventDefault(); document.body.classList.toggle('panels-hidden'); break;
     default: return;
   }
 });

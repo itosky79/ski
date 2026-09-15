@@ -13,7 +13,7 @@ const PRESETS = {
   side:   { az: 90, el: 6, dist: 5.4, fov: 40 },
   top:    { az: 176, el: 82, dist: 10, fov: 45 },
   free:   { az: 145, el: 16, dist: 5.6, fov: 46 },
-  pelvis: { az: 38, el: 16, dist: 0.88, fov: 34 },
+  pelvis: { az: 34, el: 14, dist: 1.25, fov: 36 },
 };
 
 export class CameraRig {
@@ -30,6 +30,9 @@ export class CameraRig {
     this.pan = new THREE.Vector3();
     this.fpYaw = 0; this.fpPitch = 0;
     this.scale = 1;              // 種目に応じた距離倍率
+    // 縦長の画面では、全身は寄って大きく、骨盤（横に広い）は引いて収める
+    this.aspectScale = (name) => (window.innerWidth < 820
+      ? (name === 'pelvis' ? 1.45 : 0.78) : 1);
     this._initInput();
     this.first = true;
   }
@@ -96,7 +99,7 @@ export class CameraRig {
     this.preset = name;
     this.mode = name === 'pelvis' ? 'pelvis' : 'third';
     this.az = p.az; this.el = p.el;
-    this.dist = p.dist * (name === 'pelvis' ? 1 : this.scale);
+    this.dist = p.dist * (name === 'pelvis' ? 1 : this.scale) * this.aspectScale(name);
     this.camera.fov = p.fov;
     this.camera.updateProjectionMatrix();
     this.pan.set(0, 0, 0);
@@ -148,7 +151,9 @@ export class CameraRig {
 
     // 注視点
     const t = this.mode === 'pelvis'
-      ? rigState.anchors.pelvis.clone()
+      // 骨盤ビューは股関節が見えるよう、骨盤中心と外側の股関節の間を見る
+      ? rigState.anchors.pelvis.clone().lerp(
+        rigState.anchors.outerHip ?? rigState.anchors.pelvis, 0.45)
       : s.com.clone().addScaledVector(model.D, 0.5);
     this.smoothTarget.lerp(t, this.first ? 1 : 1 - Math.exp(-dt * 5));
     const target = this.smoothTarget.clone().add(this.pan);

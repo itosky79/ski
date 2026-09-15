@@ -324,23 +324,22 @@ export function createPelvis(height = 1.75) {
       emissive: 0x1c2330, emissiveIntensity: 1,
     }),
     sacrum: boneMat(BONE_COLORS.sacrum.hex, { side: THREE.DoubleSide }),
-    femurHead: boneMat(BONE_COLORS.femurHead.hex, { roughness: 0.28 }),
-    femurNeck: boneMat(0xe6ecf5, { roughness: 0.45 }),
-    acetabulum: boneMat(0xa9b7c9, { roughness: 0.6, side: THREE.DoubleSide }),
+    acetabulum: boneMat(0xb4c2d4, { roughness: 0.55, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.55, depthWrite: false }),
     asis: new THREE.MeshStandardMaterial({
       color: BONE_COLORS.asis.hex, roughness: 0.35,
       emissive: new THREE.Color(BONE_COLORS.asis.hex).multiplyScalar(0.5),
     }),
   };
 
-  const parts = { hip: [], sacrum: [], femurHead: [], asis: [] };
+  const parts = { hip: [], sacrum: [], asis: [] };
   const geos = {};
   const hips = {};
-  const femurGroups = {};
 
   /* ---- 寛骨（左右） ---- */
+  // ローカル +x は身体の「左」側（three.js のオブジェクトは +Z を向くため）
   for (const side of [1, -1]) {
-    const key = side > 0 ? 'R' : 'L';
+    const key = side > 0 ? 'L' : 'R';
     const geo = innominateGeometryCached(S, side);
     geos[key] = geo;
     const mesh = new THREE.Mesh(geo, side > 0 ? mats.hipR : mats.hipL);
@@ -357,24 +356,6 @@ export function createPelvis(height = 1.75) {
     cup.position.set(side * (W + 0.004 * S), HIP.y, HIP.z);
     cup.rotation.z = side > 0 ? -Math.PI / 2 : Math.PI / 2;
     group.add(cup);
-
-    /* 大腿骨頭・頸・大転子（股関節の動きが見えるように） */
-    const fg = new THREE.Group();
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.026 * S, 22, 16), mats.femurHead);
-    fg.add(head);
-    const neck = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.014 * S, 0.018 * S, 1, 12), mats.femurNeck);
-    neck.name = 'neck';
-    fg.add(neck);
-    const troch = new THREE.Mesh(
-      new THREE.SphereGeometry(0.023 * S, 16, 12), mats.femurNeck);
-    troch.scale.set(1, 1.25, 0.85);
-    troch.name = 'trochanter';
-    fg.add(troch);
-    fg.position.set(side * W, HIP.y, HIP.z);
-    group.add(fg);
-    femurGroups[key] = fg;
-    parts.femurHead.push(head);
 
     /* ASIS（上前腸骨棘）マーカー：立体化したあとの実際の位置に置く */
     const lm = innominateLandmark('ASIS', S);
@@ -410,12 +391,12 @@ export function createPelvis(height = 1.75) {
   /* ---- 骨盤の正面を示す矢印 ---- */
   const facing = new THREE.Group();
   const arrowMat = new THREE.MeshBasicMaterial({ color: 0x4cc3ff });
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.010 * S, 0.010 * S, 0.30 * S, 10), arrowMat);
-  shaft.position.set(0, 0, 0.15 * S); shaft.rotation.x = Math.PI / 2;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.026 * S, 0.075 * S, 14), arrowMat);
-  tip.position.set(0, 0, 0.335 * S); tip.rotation.x = Math.PI / 2;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.005 * S, 0.005 * S, 0.20 * S, 10), arrowMat);
+  shaft.position.set(0, 0, 0.16 * S); shaft.rotation.x = Math.PI / 2;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.016 * S, 0.055 * S, 14), arrowMat);
+  tip.position.set(0, 0, 0.288 * S); tip.rotation.x = Math.PI / 2;
   facing.add(shaft, tip);
-  facing.position.set(0, -0.005 * S, 0.02 * S);
+  facing.position.set(0, -0.010 * S, 0.02 * S);
   group.add(facing);
 
   /* ---- ラベルのアンカー（骨盤ローカル座標） ---- */
@@ -423,35 +404,12 @@ export function createPelvis(height = 1.75) {
     { key: 'crest', name: '腸骨稜', pos: (() => { const c = innominateLandmark('crest_top', S); return V3(W + c.x + 0.010 * S, HIP.y + c.y + 0.012 * S, HIP.z + c.z); })() },
     { key: 'asis', name: '上前腸骨棘（ASIS）', pos: V3(W + asisLM.x + 0.012 * S, asisY + 0.010 * S, asisZ + 0.012 * S) },
     { key: 'sacrum', name: '仙骨', pos: V3(0, HIP.y + 0.050 * S, -0.070 * S) },
-    { key: 'acetabulum', name: '寛骨臼・大腿骨頭', pos: V3(W + 0.045 * S, HIP.y, HIP.z) },
-    { key: 'trochanter', name: '大転子', pos: V3(W + 0.070 * S, HIP.y - 0.020 * S, HIP.z) },
+    { key: 'acetabulum', name: '寛骨臼（股関節のソケット）', pos: V3(W + 0.048 * S, HIP.y + 0.010 * S, HIP.z) },
+    { key: 'trochanter', name: '大転子', pos: V3(W + 0.075 * S, HIP.y - 0.030 * S, HIP.z) },
     { key: 'ischium', name: '坐骨結節', pos: (() => { const c = innominateLandmark('tuber_inf', S); return V3(W + c.x, HIP.y + c.y - 0.014 * S, HIP.z + c.z); })() },
     { key: 'pubis', name: '恥骨結合', pos: V3(0, HIP.y - 0.058 * S, HIP.z + 0.062 * S) },
     { key: 'foramen', name: '閉鎖孔', pos: V3(W * 0.62, HIP.y - 0.050 * S, HIP.z + 0.022 * S) },
   ];
-
-  /**
-   * 大腿骨（頸部と大転子）を実際の脚の向きに合わせる。
-   * dir は骨盤ローカル座標での「股関節 → 膝」の単位ベクトル。
-   */
-  function setFemurDir(key, dir) {
-    const fg = femurGroups[key];
-    if (!fg) return;
-    const side = key === 'R' ? 1 : -1;
-    const neckDir = V3(side, 0, 0).multiplyScalar(0.82)
-      .addScaledVector(dir, 0.58).normalize();
-    const len = 0.052 * S;
-    const troch = neckDir.clone().multiplyScalar(len);
-    const neck = fg.getObjectByName('neck');
-    neck.position.copy(troch.clone().multiplyScalar(0.5));
-    neck.scale.set(1, len, 1);
-    neck.quaternion.setFromUnitVectors(V3(0, 1, 0), neckDir);
-    const t = fg.getObjectByName('trochanter');
-    t.position.copy(troch);
-    t.quaternion.setFromUnitVectors(V3(0, 1, 0), dir.clone().negate());
-  }
-  setFemurDir('R', V3(0.15, -1, 0.1).normalize());
-  setFemurDir('L', V3(-0.15, -1, 0.1).normalize());
 
   /* 初期配色 */
   const applyColors = (outerIsRight) => {
@@ -476,8 +434,6 @@ export function createPelvis(height = 1.75) {
       lastOuter = outerIsRight;
       applyColors(outerIsRight);
     },
-
-    setFemurDir,
 
     /** ラベルのアンカーをワールド座標で返す */
     labelPoints() {

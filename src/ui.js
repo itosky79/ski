@@ -63,6 +63,10 @@ export class LabelLayer {
           y = q.y + (y >= q.y ? 19 : -19);
         }
       }
+      // 画面からはみ出さないように収める（ラベルの幅を見て左右に余白をとる）
+      const hw = (it.d.offsetWidth || 90) / 2 + 6;
+      x = Math.max(hw, Math.min(size.w - hw, x));
+      y = Math.max(46, Math.min(size.h - 54, y));
       placed.push({ x, y });
       it.d.style.display = '';
       it.d.style.left = `${Math.round(x)}px`;
@@ -103,8 +107,20 @@ export class UI {
                    : v > 6 ? 'すねの前傾がやや浅い'
                            : 'すねが立って後傾ぎみ — 脛でブーツの前を押す' },
     ];
+    this.hipDefs = [
+      { k: 'flex', name: '屈曲（前へ曲げる）', range: 70, color: '#7be0ff',
+        hint: (v) => v > 45 ? '深く曲げています' : v > 20 ? '適度に曲げています' : '脚が伸びています' },
+      { k: 'abd', name: '外転（＋）／内転（−）', range: 40, color: 'var(--inner)',
+        hint: (v) => v > 5 ? '外脚を外へ開いています（外傾が深い局面）'
+                   : v < -5 ? '骨盤を外へ回したぶん、大腿骨は骨盤から見て内側を向きます'
+                            : '骨盤の真下に脚があります' },
+      { k: 'rot', name: '回旋：内旋（＋）／外旋（−）', range: 40, color: 'var(--outer)',
+        hint: (v) => v > 5 ? '内旋 — 骨盤だけが外を向き、脚はスキーに沿ったまま（＝外向の正体）'
+                   : v < -5 ? '外旋 — 骨盤がスキーより内を向いています' : 'ひねりなし' },
+    ];
     this._buildReadouts();
     this._buildMotions();
+    this._buildMotions('#hip-motions', 'hipDefs', 'hip');
     this._buildLegend();
     this._buildTicks();
     this._wire();
@@ -144,19 +160,19 @@ export class UI {
     }
   }
 
-  _buildMotions() {
-    const box = document.querySelector('#pelvis-motions');
+  _buildMotions(sel = '#pelvis-motions', defs = 'motionDefs', store = 'mo') {
+    const box = document.querySelector(sel);
     if (!box) return;
     box.innerHTML = '';
-    this.mo = {};
-    for (const d of this.motionDefs) {
+    this[store] = {};
+    for (const d of this[defs]) {
       const el = document.createElement('div');
       el.className = 'mo';
       el.innerHTML = `<span class="mo-name">${d.name}</span><span class="mo-val">—</span>`
         + `<div class="mo-bar"><div class="mo-fill" style="background:${d.color}"></div></div>`
         + `<span class="mo-hint"></span>`;
       box.appendChild(el);
-      this.mo[d.k] = {
+      this[store][d.k] = {
         val: el.querySelector('.mo-val'),
         fill: el.querySelector('.mo-fill'),
         hint: el.querySelector('.mo-hint'),
@@ -165,10 +181,11 @@ export class UI {
     }
   }
 
-  /** 骨盤の 3 つの動きを更新する（角度は度） */
-  updateMotions(m) {
-    if (!this.mo) return;
-    for (const [k, o] of Object.entries(this.mo)) {
+  /** 骨盤・股関節の動きを更新する（角度は度） */
+  updateMotions(m, store = 'mo') {
+    const box = this[store];
+    if (!box) return;
+    for (const [k, o] of Object.entries(box)) {
       const v = m[k] ?? 0;
       const r = o.def.range;
       const t = Math.max(-1, Math.min(1, v / r));
@@ -257,17 +274,17 @@ export class UI {
     $('#btn-help').addEventListener('click', () => this.toggleHelp(true));
     $('#btn-help-close').addEventListener('click', () => this.toggleHelp(false));
     $('#help').addEventListener('click', (e) => { if (e.target.id === 'help') this.toggleHelp(false); });
-    // 画面が狭いときは操作パネルを畳んでおき、▤ で出し入れする
-    const narrow = () => window.matchMedia('(max-width:820px)').matches;
-    if (narrow()) document.body.classList.add('left-hidden');
+    // 狭い画面：パネルは下から出るシート。同時に開くのは 1 枚だけ。
+    this.sheets = { ctrl: $('#panel-left'), data: $('#panel-right') };
+    this.sheetBtns = { ctrl: $('#btn-sheet-ctrl'), data: $('#btn-sheet-data') };
+    for (const [k, b] of Object.entries(this.sheetBtns)) {
+      b.addEventListener('click', () => this.openSheet(
+        this.sheets[k].classList.contains('sheet-open') ? null : k));
+    }
+    $('#btn-panels').addEventListener('click', () =>
+      document.body.classList.toggle('panels-hidden'));
     window.addEventListener('resize', () => {
-      if (narrow() && !this._narrowed) {
-        this._narrowed = true;
-        document.body.classList.add('left-hidden');
-      } else if (!narrow()) this._narrowed = false;
-    });
-    $('#btn-panels').addEventListener('click', () => {
-      document.body.classList.toggle(narrow() ? 'left-hidden' : 'panels-hidden');
+      if (!window.matchMedia('(max-width:820px)').matches) this.openSheet(null);
     });
   }
 
@@ -280,6 +297,15 @@ export class UI {
     document.querySelectorAll('[data-view]').forEach((x) =>
       x.setAttribute('aria-pressed', String(x.dataset.view === v)));
     if (!silent) this.h.onView(v);
+  }
+
+  /** 狭い画面のシートを開閉する（null で全部閉じる） */
+  openSheet(which) {
+    for (const [k, el] of Object.entries(this.sheets)) {
+      const on = k === which;
+      el.classList.toggle('sheet-open', on);
+      this.sheetBtns[k].setAttribute('aria-pressed', String(on));
+    }
   }
 
   toggleHelp(on) { $('#help').hidden = !on; }
@@ -354,6 +380,14 @@ export class UI {
     set('carve', carveTxt);
     this.ro.carve.style.color = s.carving ? 'var(--inner)' : 'var(--outer)';
 
+    const hudPhase = document.querySelector('#hud .hud-phase');
+    if (hudPhase) {
+      hudPhase.textContent = s.phaseInfo.name;
+      $('#hud-counter').textContent = `${deg(s.counter).toFixed(0)}°`;
+      $('#hud-counter').style.color = 'var(--outer)';
+      $('#hud-incl').textContent = `${deg(s.inclination).toFixed(0)}°`;
+      $('#hud-load').textContent = `${s.loadBW.toFixed(1)}×`;
+    }
     $('#phase-name').textContent = s.phaseInfo.name;
     $('#phase-desc').textContent = s.phaseInfo.desc;
 
