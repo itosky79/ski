@@ -86,6 +86,7 @@ body{
 #panel-left{left:12px;top:64px}
 #panel-right{right:12px;top:64px}
 body.panels-hidden .panel,body.panels-hidden #transport{opacity:0;pointer-events:none}
+body.left-hidden #panel-left{opacity:0;pointer-events:none}
 .panel,#transport{transition:opacity .2s linear}
 
 .block{padding-top:8px;border-top:1px solid rgba(255,255,255,.07);margin-top:8px}
@@ -205,13 +206,21 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
   #panel-right{max-height:calc(100% - 210px)}
 }
 @media (max-width:820px){
-  #topbar{gap:6px;padding-bottom:6px}
-  .brand small{display:none}
+  #topbar{gap:5px;padding-bottom:6px}
+  .brand{margin-right:2px}
+  .brand .titles{display:none}
+  .seg{padding:5px 9px;font-size:11px}
+  .seg small{display:none}
+  .ghost{padding:5px 8px;font-size:11px}
   .panel{
     position:absolute;left:8px;right:8px;width:auto;max-height:38vh;
   }
-  #panel-left{top:auto;bottom:calc(64px + env(safe-area-inset-bottom,0px))}
-  #panel-right{top:56px;bottom:auto;max-height:34vh}
+  #panel-left{top:auto;bottom:calc(64px + env(safe-area-inset-bottom,0px));max-height:42vh}
+  #panel-right{top:calc(92px + env(safe-area-inset-top,0px));bottom:auto;max-height:28vh}
+  /* 狭い画面では骨盤コンパスと推移グラフを省き、局面と数値を残す */
+  #panel-right .block:nth-child(2),#panel-right .block:nth-child(4){display:none}
+  .readouts{grid-template-columns:1fr 1fr 1fr}
+  .ro.wide{grid-column:span 3}
   .toggles{grid-template-columns:1fr 1fr 1fr}
   .help-grid{grid-template-columns:1fr}
   #transport{width:calc(100% - 16px);gap:7px;padding:7px 10px}

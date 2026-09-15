@@ -207,7 +207,18 @@ export class UI {
     $('#btn-help').addEventListener('click', () => this.toggleHelp(true));
     $('#btn-help-close').addEventListener('click', () => this.toggleHelp(false));
     $('#help').addEventListener('click', (e) => { if (e.target.id === 'help') this.toggleHelp(false); });
-    $('#btn-panels').addEventListener('click', () => document.body.classList.toggle('panels-hidden'));
+    // 画面が狭いときは操作パネルを畳んでおき、▤ で出し入れする
+    const narrow = () => window.matchMedia('(max-width:820px)').matches;
+    if (narrow()) document.body.classList.add('left-hidden');
+    window.addEventListener('resize', () => {
+      if (narrow() && !this._narrowed) {
+        this._narrowed = true;
+        document.body.classList.add('left-hidden');
+      } else if (!narrow()) this._narrowed = false;
+    });
+    $('#btn-panels').addEventListener('click', () => {
+      document.body.classList.toggle(narrow() ? 'left-hidden' : 'panels-hidden');
+    });
   }
 
   _paintSlider(el) {

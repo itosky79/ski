@@ -6,3 +6,4 @@ node_modules/
 .test-ui.mjs
 .test-doc.mjs
 .test-cdn.mjs
+.test-chart.mjs

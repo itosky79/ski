@@ -320,7 +320,7 @@ window.addEventListener('keydown', (e) => {
     case 'f': case 'F': ui.toggles.forces.checked = !ui.toggles.forces.checked;
       app.show.forces = ui.toggles.forces.checked; applyVisibility(); break;
     case 'h': case 'H': ui.toggleHelp(document.getElementById('help').hidden); break;
-    case 'Tab': e.preventDefault(); document.body.classList.toggle('panels-hidden'); break;
+    case 'Tab': e.preventDefault(); document.getElementById('btn-panels').click(); break;
     default: return;
   }
 });
