@@ -284,7 +284,7 @@ function updateLabels(s) {
         guides.anchors.counter ?? a.pelvis);
     }
     if (app.show.forces) {
-      labels.set('fn', `雪面反力 <b>${forceView.values.snowBW.toFixed(1)}×体重</b>`,
+      labels.set('fn', `外スキー <b>${forceView.values.outerBW.toFixed(2)}×体重</b>`,
         forceView.anchors.snow);
     }
     return;
@@ -302,11 +302,14 @@ function updateLabels(s) {
   }
   if (app.show.forces) {
     const v = forceView.values;
-    labels.set('fn', `雪面反力 <b>${v.snowBW.toFixed(1)}×体重</b>`, forceView.anchors.snow);
+    labels.set('fn', `外スキー <b>${v.outerBW.toFixed(2)}×体重</b>`, forceView.anchors.snow);
+    labels.set('fni', `内スキー ${v.innerBW.toFixed(2)}×体重`, forceView.anchors.snowInner, 'small');
     labels.set('fg', `重力 ${(v.gravity / 9.80665).toFixed(0)} kgf`, forceView.anchors.gravity, 'small');
     if (forceView.anchors.centrifugal) {
       labels.set('fc', `遠心力 ${(v.centrifugal / 9.80665).toFixed(0)} kgf`, forceView.anchors.centrifugal, 'small');
     }
+    labels.set('cp', `圧の中心 ブーツ前 ${(v.cpOffset * 100).toFixed(0)}cm`,
+      forceView.anchors.cp, 'small');
   }
 }
 

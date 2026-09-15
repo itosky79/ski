@@ -79,6 +79,12 @@ export class TurnModel {
       innerEdgeExtraDeg: 5,
       // トップの前後差（ステップ量）は、スタンス幅とエッジ角から決まる
       leadFactor: 0.35,
+      // 内足の先行が骨盤の向きに伝わる割合（残りは膝と股関節が吸収する）
+      leadToPelvis: 0.30,
+      // 重心をブーツ中心のどれだけ前に置くか [m]。位相で変わる（前半は前、後半は少し戻す）。
+      // これを決めると、力の釣り合いから圧の中心（CP）が板のどこに乗るかが決まる。
+      foreTarget: 0.01,
+      foreAmp: 0.05,
     }, params);
     this.rebuild();
   }
@@ -267,7 +273,7 @@ export class TurnModel {
     const kneeAng = rad(P.kneeAngulationDeg) * Math.pow(loadNorm, 0.75);
 
     // 脚の長さ（接雪点→股関節）。荷重が高いほど伸ばす
-    const legLen = P.height * (0.42 + 0.08 * loadNorm);
+    const legLen = P.height * (0.455 + 0.075 * loadNorm);
     const torsoLen = P.height * 0.288;
 
     const fr = this.solveFrontal(d.lambda, angulation, legLen, torsoLen);
@@ -309,8 +315,16 @@ export class TurnModel {
     const fall = smoothstep(0.55, 0.95, phase0);
     const outerShare = 0.5 + (P.outerShareMax - 0.5) * rise
       - (P.outerShareMax - P.outerShareLate) * fall;
-    const pressure = trackCenter.clone()
+    const lateralCp = trackCenter.clone()
       .addScaledVector(d.outward, half * (2 * outerShare - 1));
+
+    /* --- 圧の中心（CP）の前後位置 ---
+     * 身体の前後位置（重心をブーツのどれだけ前に置くか）を決めると、
+     * 「雪面反力の作用線は接雪点と重心を結ぶ」という条件から
+     * 圧が板のどこに乗るかが決まる。エッジで強く減速するほど圧はトップへ寄る。 */
+    const foreTarget = P.foreTarget + P.foreAmp * Math.cos(TAU * (phase0 - 0.25));
+    const foreShift = foreTarget - fr.comDist * d.uLeg.dot(d.tangent);
+    const pressure = lateralCp.clone().addScaledVector(d.tangent, foreShift);
 
     const com = pressure.clone().addScaledVector(d.uLeg, fr.comDist);
     const hip = pressure.clone().addScaledVector(legDir, legLen);      // 骨盤中心
@@ -325,6 +339,10 @@ export class TurnModel {
       pos: trackCenter, pressure, com, hip, legLen, torsoLen,
       footL, footR, outerFoot, innerFoot, outerIsRight, outerShare,
       stance, innerLead, edgeAngleInner, counterSpine,
+      cpOffset: foreShift,            // ブーツ中心から前へ何 m か
+      comFore: foreTarget,            // 重心のブーツからの前後位置 [m]
+      forceOuter: d.fPerMass.clone().multiplyScalar(P.mass * outerShare),
+      forceInner: d.fPerMass.clone().multiplyScalar(P.mass * (1 - outerShare)),
       tangent: d.tangent, eLat: d.eLat, inward: d.inward, outward: d.outward,
       turnSign: d.turnSign,
       normal: this.N, fallLine: this.D,

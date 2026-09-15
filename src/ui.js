@@ -92,8 +92,11 @@ export class UI {
       { k: 'angulation', label: '外傾角（腰）', unit: '°', hi: '--inner' },
       { k: 'inclination', label: '内傾角（力学）', unit: '°' },
       { k: 'edge', label: 'エッジ角', unit: '°' },
-      { k: 'load', label: '外脚が支える力', unit: '体重比' },
+      { k: 'load', label: '合計の力', unit: '体重比' },
       { k: 'share', label: '外脚の荷重配分', unit: '%' },
+      { k: 'fOuter', label: '外スキーの力', unit: '体重比', hi: '--outer' },
+      { k: 'fInner', label: '内スキーの力', unit: '体重比', hi: '--inner' },
+      { k: 'cp', label: '圧の中心（ブーツ前）', unit: 'cm' },
       { k: 'lead', label: '内スキーの先行', unit: 'cm' },
       { k: 'hipLead', label: '内腰の先行', unit: 'cm' },
       { k: 'carve', label: 'カービング判定', unit: '', wide: true },
@@ -383,6 +386,9 @@ export class UI {
     set('load', s.loadBW.toFixed(2));
     set('share', (s.outerShare * 100).toFixed(0));
     set('lead', ((s.innerLead ?? 0) * 100).toFixed(0));
+    set('fOuter', (s.outerShare * s.loadBW).toFixed(2));
+    set('fInner', ((1 - s.outerShare) * s.loadBW).toFixed(2));
+    set('cp', ((s.cpOffset ?? 0) * 100).toFixed(0));
     set('hipLead', ((extra?.hipLead ?? 0) * 100).toFixed(0));
     const carveTxt = s.carving
       ? `カービング可（必要 ${deg(s.edgeNeeded).toFixed(0)}° ≦ 実際 ${deg(s.edgeAngle).toFixed(0)}°）`

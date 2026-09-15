@@ -95,9 +95,22 @@ export class ForceView {
       gravity: makeArrow(0xffd166),
       centrifugal: makeArrow(0xff8fd0),
       resultant: makeArrow(0xc6a4ff, 0.022),
-      snow: makeArrow(0x7be0ff),
+      snowOuter: makeArrow(0x7be0ff, 0.030),
+      snowInner: makeArrow(0x4aa8cc, 0.020),
     };
     for (const a of Object.values(this.arrows)) this.group.add(a);
+
+    /* 圧の中心（CP）：板のどこに力が乗っているか */
+    this.cp = new THREE.Group();
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.055, 0.008, 8, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffef9f }));
+    ring.rotation.x = Math.PI / 2;
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.022, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffef9f }));
+    this.cp.add(ring, dot);
+    this.group.add(this.cp);
     this.anchors = {};
     this.refLen = 1.15;         // 体重 1 倍ぶんの矢印長 [m]
     this.scale = 1;             // 骨盤クローズアップでは短くする
@@ -115,20 +128,38 @@ export class ForceView {
       this.arrows.centrifugal.userData.set(s.com, centrifugal, centrifugal.length() * unit);
     } else this.arrows.centrifugal.visible = false;
     this.arrows.resultant.userData.set(s.com, resultant, resultant.length() * unit);
-    this.arrows.snow.userData.set(s.pressure, s.uLeg, snow.length() * unit);
+
+    /* 外スキーと内スキーに分けて力を描く */
+    const fo = s.forceOuter ?? snow, fi = s.forceInner ?? snow.clone().multiplyScalar(0);
+    const outerFoot = s.outerFoot.clone();
+    const innerFoot = s.innerFoot.clone().addScaledVector(s.tangent, s.innerLead ?? 0);
+    this.arrows.snowOuter.userData.set(outerFoot, s.uLeg, fo.length() * unit);
+    this.arrows.snowInner.visible = fi.length() > 1;
+    if (this.arrows.snowInner.visible) {
+      this.arrows.snowInner.userData.set(innerFoot, s.uLeg, fi.length() * unit);
+    }
+
+    /* 圧の中心 */
+    this.cp.position.copy(s.pressure);
+    this.cp.quaternion.setFromUnitVectors(V(0, 1, 0), s.normal);
 
     this.anchors = {
       gravity: s.com.clone().addScaledVector(V(0, -1, 0), gravity.length() * unit + 0.12),
       centrifugal: centrifugal.length() > 1
         ? s.com.clone().addScaledVector(centrifugal.clone().normalize(), centrifugal.length() * unit + 0.12) : null,
-      snow: s.pressure.clone().addScaledVector(s.uLeg, snow.length() * unit + 0.12),
+      snow: outerFoot.clone().addScaledVector(s.uLeg, fo.length() * unit + 0.12),
+      snowInner: innerFoot.clone().addScaledVector(s.uLeg, fi.length() * unit + 0.10),
       resultant: s.com.clone().addScaledVector(resultant.clone().normalize(), resultant.length() * unit * 0.55),
+      cp: s.pressure.clone().addScaledVector(s.normal, 0.10),
     };
     this.values = {
       gravity: gravity.length(),
       centrifugal: centrifugal.length(),
       snow: snow.length(),
       snowBW: snow.length() / (m * G),
+      outerBW: fo.length() / (m * G),
+      innerBW: fi.length() / (m * G),
+      cpOffset: s.cpOffset ?? 0,
     };
   }
 

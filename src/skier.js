@@ -12,8 +12,10 @@ import * as THREE from 'three';
 import { ANTHRO, SEGMENT_MASS, BONE_COLORS } from './constants.js';
 import { createPelvis } from './pelvis.js';
 import { createLegBones } from './leg.js';
+import { createTorso } from './torso.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const rad = (d) => d * Math.PI / 180;
 
 /* ------------------------------------------------------------------ */
 /* 汎用パーツ                                                          */
@@ -167,20 +169,11 @@ export function createSkier(opts = {}) {
   pelvisNode.add(pelvis.group);
   skeleton.add(pelvisNode);
 
-  /* 脊柱 */
-  const spineSegs = [];
-  for (let i = 0; i < 6; i++) {
-    const m = makeLink(new THREE.MeshStandardMaterial({
-      color: BONE_COLORS.spine.hex, roughness: 0.5,
-    }), 0.019 * (1 - i * 0.05));
-    skeleton.add(m); spineSegs.push(m);
-  }
-  /* 胸郭 */
-  const ribCage = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 20, 14),
-    new THREE.MeshStandardMaterial({ color: 0xdde6f2, roughness: 0.6, transparent: true, opacity: 0.55 }),
-  );
-  skeleton.add(ribCage);
+  /* 体幹：椎骨 24 個・肋骨 12 対・胸骨・鎖骨・肩甲骨 */
+  const spineMat = new THREE.MeshStandardMaterial({ color: BONE_COLORS.spine.hex, roughness: 0.5 });
+  const discMat = new THREE.MeshStandardMaterial({ color: 0x8fa8c4, roughness: 0.75 });
+  const torso = createTorso(H, spineMat, discMat);
+  skeleton.add(torso.group);
 
   /* 下肢：大腿骨・膝蓋骨・脛骨・腓骨（解剖学的な形） */
   const legs = { L: createLegBones(H, -1, legMat), R: createLegBones(H, 1, legMat) };
@@ -192,21 +185,21 @@ export function createSkier(opts = {}) {
   const ulna = { L: makeLink(boneMat, 0.014), R: makeLink(boneMat, 0.014) };
   const elbow = { L: makeBall(jointMat, 0.023), R: makeBall(jointMat, 0.023) };
   const shoulderB = { L: makeBall(jointMat, 0.028), R: makeBall(jointMat, 0.028) };
-  const clavicle = makeLink(boneMat, 0.013);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(seg.headR, 18, 14), boneMat);
   for (const s of ['L', 'R']) {
     skeleton.add(humerus[s], ulna[s], elbow[s], shoulderB[s]);
   }
-  skeleton.add(clavicle, skull);
+  skeleton.add(skull);
 
   /* 身体（半透明） */
   const fleshThigh = { L: makeLink(skinMat, 0.085, 0.8), R: makeLink(skinMat, 0.085, 0.8) };
   const fleshShank = { L: makeLink(skinMat, 0.062, 0.7), R: makeLink(skinMat, 0.062, 0.7) };
   const fleshArm = { L: makeLink(skinMat, 0.048, 0.85), R: makeLink(skinMat, 0.048, 0.85) };
   const fleshFore = { L: makeLink(skinMat, 0.040, 0.85), R: makeLink(skinMat, 0.040, 0.85) };
-  const torsoMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 16), skinMat);
+  const abdomenMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), skinMat);
+  const chestMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), skinMat);
   const hipMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), skinMat);
-  bodyG.add(torsoMesh, hipMesh);
+  bodyG.add(abdomenMesh, chestMesh, hipMesh);
   for (const s of ['L', 'R']) bodyG.add(fleshThigh[s], fleshShank[s], fleshArm[s], fleshFore[s]);
 
   /* 装備：ヘルメット・ブーツ・スキー・ストック */
@@ -312,7 +305,9 @@ export function createSkier(opts = {}) {
     const skiNormal = skiNormalOuter;
 
     /* --- 脚（2 リンク IK） --- */
-    const kneeHint = s.tangent.clone().addScaledVector(skiNormal, 0.72).normalize();
+    // 脚を畳んでいるときほど、膝は前ではなく上（板の法線方向）へ抜ける
+    const kneeHint = s.tangent.clone()
+      .addScaledVector(skiNormal, 0.72 + 1.1 * (1 - s.loadNorm)).normalize();
     const hips = { L: hipL, R: hipR };
     const legBasis = {};
     for (const side of ['L', 'R']) {
@@ -325,41 +320,57 @@ export function createSkier(opts = {}) {
         hips[side].clone().sub(kp), ankles[side].clone().sub(kp));
     }
 
-    /* --- 脊柱・胸郭 --- */
-    const lumbarBase = pelvisPos.clone().addScaledVector(pelvisUp, 0.055 * pelvis.scale);
-    const chestPos = lumbarBase.clone().addScaledVector(s.torsoDir, seg.trunk * 0.92);
-    // 肩は骨盤よりさらに大きく谷を向く（実測でも上体の外向は骨盤の約 2 倍）
-    const spineExtra = (s.counterSpine ?? s.counter) - s.counter;
-    let chestFwd = rotateToward(fwd, s.outward, s.torsoDir, spineExtra).normalize();
-    chestFwd = chestFwd.projectOnPlane(s.torsoDir).normalize();
-    const chestRight = new THREE.Vector3().crossVectors(chestFwd, s.torsoDir).normalize();
-    const chestLeft = chestRight.clone().negate();
+    /* --- 体幹 ---
+     * 骨盤の上に脊柱を積み、側屈・回旋・屈曲を部位ごとの可動域比で配分する。
+     * 回旋の主役は胸椎（腰椎はほとんど回らない）ので、
+     * 「骨盤と肩の向きの差」は自然と胸のあたりで作られる。 */
+    const sacralTop = pelvisPos.clone()
+      .addScaledVector(pelvisUp, 0.050 * pelvis.scale)
+      .addScaledVector(fwd, -0.028 * pelvis.scale);
+    torso.group.position.copy(sacralTop);
+    torso.group.quaternion.copy(pelvisNode.quaternion);
 
-    for (let i = 0; i < spineSegs.length; i++) {
-      const t0 = i / spineSegs.length, t1 = (i + 1) / spineSegs.length;
-      const a = lumbarBase.clone().lerp(chestPos, t0);
-      const b = lumbarBase.clone().lerp(chestPos, t1);
-      // 腰椎側屈を少し曲線にする
-      const bow = Math.sin(Math.PI * (t0 + t1) / 2) * 0.03 * pelvis.scale;
-      a.addScaledVector(chestFwd, bow); b.addScaledVector(chestFwd, bow);
-      spineSegs[i].userData.set(a, b);
-    }
-    ribCage.position.copy(lumbarBase.clone().lerp(chestPos, 0.62));
-    ribCage.scale.set(seg.shoulderW * 0.42, seg.trunk * 0.33, seg.shoulderW * 0.30);
-    ribCage.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(chestLeft, s.torsoDir, chestFwd));
+    // 側屈：外傾のうち脊柱が担うぶん（残りは股関節）。外側へ倒す向きが +
+    const spineLateral = (1 - hipShare) * s.angulation
+      * (right.dot(s.outward) > 0 ? -1 : 1);
+    // 回旋：肩と骨盤の差。外側へ回す向きが +
+    const spineAxial = ((s.counterSpine ?? s.counter) - s.counter)
+      * (right.dot(s.outward) > 0 ? -1 : 1);
+    // 屈曲：前傾の深さ（荷重が高いほど深く構える）
+    const spineFlex = rad(14 + 16 * s.loadNorm);
+    torso.update(spineLateral, spineAxial, spineFlex);
 
-    torsoMesh.position.copy(lumbarBase.clone().lerp(chestPos, 0.52));
-    torsoMesh.scale.set(seg.shoulderW * 0.46, seg.trunk * 0.62, seg.shoulderW * 0.34);
-    torsoMesh.quaternion.copy(ribCage.quaternion);
+    /* 体幹から出てくるフレーム */
+    const chestPos = new THREE.Vector3();
+    torso.thoracic[torso.thoracic.length - 1].getWorldPosition(chestPos);
+    const midThorax = new THREE.Vector3();
+    torso.thoracic[Math.floor(torso.thoracic.length / 2)].getWorldPosition(midThorax);
+    const lumbarBase = sacralTop.clone();
+
+    const chestQuat = new THREE.Quaternion();
+    torso.thoracic[torso.thoracic.length - 1].getWorldQuaternion(chestQuat);
+    const chestFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(chestQuat).normalize();
+    const chestUp = new THREE.Vector3(0, 1, 0).applyQuaternion(chestQuat).normalize();
+    const chestLeft = new THREE.Vector3(1, 0, 0).applyQuaternion(chestQuat).normalize();
+    const chestRight = chestLeft.clone().negate();
+
+    /* 身体シェル（腹部と胸部） */
+    const setShell = (mesh, a, b, rx, rz) => {
+      const d = b.clone().sub(a);
+      mesh.position.copy(a).addScaledVector(d, 0.5);
+      mesh.scale.set(rx, d.length() * 0.62, rz);
+      mesh.quaternion.setFromUnitVectors(V(0, 1, 0), d.clone().normalize());
+    };
+    setShell(abdomenMesh, pelvisPos, midThorax, seg.shoulderW * 0.36, seg.shoulderW * 0.30);
+    setShell(chestMesh, midThorax, chestPos, seg.shoulderW * 0.44, seg.shoulderW * 0.32);
     hipMesh.position.copy(pelvisPos);
     hipMesh.scale.set(0.17, 0.13, 0.15);
     hipMesh.quaternion.copy(pelvisNode.quaternion);
 
     /* --- 肩・腕・ストック --- */
-    const shoulderR = chestPos.clone().addScaledVector(chestRight, seg.shoulderW / 2);
-    const shoulderL = chestPos.clone().addScaledVector(chestRight, -seg.shoulderW / 2);
-    clavicle.userData.set(shoulderL, shoulderR);
+    const shoulderR = new THREE.Vector3(), shoulderL = new THREE.Vector3();
+    torso.shoulders.R.getWorldPosition(shoulderR);
+    torso.shoulders.L.getWorldPosition(shoulderL);
     shoulderB.R.position.copy(shoulderR); shoulderB.L.position.copy(shoulderL);
 
     const shoulders = { L: shoulderL, R: shoulderR };
@@ -387,13 +398,15 @@ export function createSkier(opts = {}) {
       poles[side].userData.shaft.userData.set(hand, tip);
     }
 
-    /* --- 頭：次の旗門を見る --- */
-    const headPos = chestPos.clone().addScaledVector(s.torsoDir, seg.headR * 2.05);
+    /* --- 頭：頸椎の上にのせ、次の旗門を見る --- */
+    const headPos = new THREE.Vector3();
+    torso.headMount.getWorldPosition(headPos);
+    headPos.addScaledVector(chestUp, seg.headR * 0.85);
     skull.position.copy(headPos);
     helmet.position.copy(headPos);
     const lookDir = (cfg.lookTarget ? cfg.lookTarget.clone().sub(headPos) : s.tangent.clone()).normalize();
     // 頭は身体ほど傾けない（実際のスキーヤーも視線の水平を保つ）
-    const headUp = s.normal.clone().lerp(s.torsoDir, 0.3).normalize();
+    const headUp = s.normal.clone().lerp(chestUp, 0.3).normalize();
     const headRight = new THREE.Vector3().crossVectors(lookDir, headUp).normalize();
     const headFwd = new THREE.Vector3().crossVectors(headUp, headRight).normalize();
     helmet.quaternion.setFromRotationMatrix(
@@ -401,7 +414,7 @@ export function createSkier(opts = {}) {
 
     /* --- 重心：Dempster の質量比で実際の重心を求め、力学的な重心に合わせる --- */
     const actual = computeCoM({ hips, knees: { L: kneePos.L, R: kneePos.R },
-      ankles, chestPos, lumbarBase, headPos, shoulders,
+      ankles, chestPos, lumbarBase, headPos, shoulders, midThorax,
       elbows: { L: elbow.L.position, R: elbow.R.position } });
     const fix = s.com.clone().sub(actual);
     if (fix.lengthSq() < 0.25) root.position.copy(fix);   // 誤差は数 cm 程度
@@ -466,8 +479,9 @@ export function createSkier(opts = {}) {
     const acc = new THREE.Vector3();
     let total = 0;
     const add = (pos, m) => { acc.addScaledVector(pos, m); total += m; };
-    // 体幹＋頭：腰椎基部〜頭の間に分布
-    add(p.lumbarBase.clone().lerp(p.chestPos, 0.55), SEGMENT_MASS.trunkHead * 0.86);
+    // 体幹：骨盤〜胸椎中央〜胸椎上端に分けて分布（腹部が重い）
+    add(p.lumbarBase.clone().lerp(p.midThorax, 0.55), SEGMENT_MASS.trunkHead * 0.46);
+    add(p.midThorax.clone().lerp(p.chestPos, 0.45), SEGMENT_MASS.trunkHead * 0.40);
     add(p.headPos, SEGMENT_MASS.trunkHead * 0.14);
     for (const s of ['L', 'R']) {
       add(p.hips[s].clone().lerp(p.knees[s], 0.433), SEGMENT_MASS.thigh);      // 大腿
