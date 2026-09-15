@@ -101,6 +101,7 @@ export const DISCIPLINES = {
     gammaPelvis: 0.55, activePelvis: 0.25,
     gammaSpine: 1.15, activeSpine: 0.45,
     innerEdgeExtraDeg: 5,   // 内スキーは外より少し多く傾ける
+    leadToPelvis: 0.30,     // 内足の先行が骨盤の向きに伝わる割合
     leadFactor: 0.32,
     desc: '小さく速いターン。上体を谷へ向けたまま脚だけを切り替えるので、外向が大きく出ます。骨盤より肩のほうが大きく谷を向きます。',
   },
@@ -135,6 +136,7 @@ export const DISCIPLINES = {
     gammaPelvis: 0.38, activePelvis: 0.18,
     gammaSpine: 0.85, activeSpine: 0.32,
     innerEdgeExtraDeg: 4,
+    leadToPelvis: 0.26,
     leadFactor: 0.32,
     desc: '大きく長いターン。内傾が深くなる一方で骨盤の外向は控えめで、スキーに対してほぼ正対したまま外傾で外スキーを押し続けます。',
   },

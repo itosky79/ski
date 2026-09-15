@@ -86,6 +86,7 @@ function makeModel(d, ghost = false) {
     gammaPelvis: d.gammaPelvis, activePelvis: d.activePelvis,
     gammaSpine: d.gammaSpine, activeSpine: d.activeSpine,
     innerEdgeExtraDeg: d.innerEdgeExtraDeg, leadFactor: d.leadFactor,
+    leadToPelvis: d.leadToPelvis,
     skiSidecutR: d.skiSidecutR,
     height: ANTHRO.height, mass: ANTHRO.mass,
   });
@@ -357,7 +358,7 @@ function tick() {
   }
   forceView.update(s);
   guides.update(s, skier);
-  ui.update(s);
+  ui.update(s, { hipLead: skier.state.angles.hipLead ?? 0 });
   ui.updateMotions(pelvisMotions(s));
   ui.updateMotions(hipMotions(), 'hip');
   updateLabels(s);

@@ -112,9 +112,32 @@ export class TurnModel {
     this.loadMin = loadMin; this.loadMax = loadMax; this.radiusMin = rMin;
     this.geomMax = Math.max(...raw.map((d) => Math.abs(d.counterGeom)), 1e-6);
     for (let i = 0; i < raw.length; i++) {
-      shapeMax = Math.max(shapeMax, this._counterShape(raw[i], i / (NS - 1)).pelvis);
+      const ph = i / (NS - 1);
+      shapeMax = Math.max(shapeMax,
+        this._counterShape(raw[i], ph, this._leadYaw(raw[i], ph)).pelvis);
     }
     this.counterShapeMax = Math.max(shapeMax, 1e-6);
+  }
+
+  /**
+   * その位相でのスタンス幅・内足の先行量・足のラインの角度を返す。
+   * どれもエッジ角から決まる「結果」であって、意識して作る量ではない。
+   */
+  _footGeom(edgeAngle) {
+    const P = this.p;
+    const stance = P.stanceWidth * (0.72 + 0.48 * Math.max(0, Math.sin(Math.max(0, edgeAngle))));
+    const lead = Math.min(0.32, stance * Math.tan(
+      THREE.MathUtils.clamp(edgeAngle, 0, rad(78))) * P.leadFactor);
+    return { stance, lead, yaw: Math.atan2(lead, stance) };
+  }
+
+  /** 荷重から推定したエッジ角で足元の角度を求める（正規化用の近似） */
+  _leadYaw(d, phase) {
+    const alpha = rad(this.p.angulationDeg) * Math.pow(
+      THREE.MathUtils.clamp((d.loadBW - this.loadMin) / Math.max(1e-6, this.loadMax - this.loadMin), 0, 1), 0.75);
+    const legLen = this.p.height * 0.46, torsoLen = this.p.height * 0.288;
+    const fr = this.solveFrontal(d.lambda, alpha, legLen, torsoLen);
+    return this._footGeom(fr.phiLeg).yaw;
   }
 
   /**
@@ -122,13 +145,14 @@ export class TurnModel {
    *   幾何ぶん  : 身体はフォールラインを向き続けるので、スキーとの差がそのまま外向になる
    *   意識ぶん  : 山回りでさらに骨盤を外へ向ける動き（後半で立ち上がる）
    */
-  _counterShape(d, phase) {
+  _counterShape(d, phase, leadYaw = 0) {
     const P = this.p;
     const g = d.counterGeom;
     const act = smoothstep(0.15, 0.78, phase) * this.geomMax;
+    // leadYaw: 内足が前に出たぶん、骨盤も引っぱられて外を向く（足元との連動）
     return {
-      pelvis: P.gammaPelvis * g + P.activePelvis * act,
-      spine: P.gammaSpine * g + P.activeSpine * act,
+      pelvis: P.gammaPelvis * g + P.activePelvis * act + P.leadToPelvis * leadYaw,
+      spine: P.gammaSpine * g + P.activeSpine * act + P.leadToPelvis * 0.6 * leadYaw,
     };
   }
 
@@ -238,11 +262,6 @@ export class TurnModel {
     const loadNorm = THREE.MathUtils.clamp(
       (d.loadBW - this.loadMin) / Math.max(1e-6, this.loadMax - this.loadMin), 0, 1);
 
-    // 外向角：骨盤と上体で大きさが違う（上体のほうが大きく谷を向く）
-    const cs = this._counterShape(d, (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle);
-    const counter = rad(P.counterDeg) * cs.pelvis / this.counterShapeMax;
-    const counterSpine = rad(P.counterDeg) * cs.spine / this.counterShapeMax;
-
     // 外傾角・膝の角度は荷重に応じて深くなる
     const angulation = rad(P.angulationDeg) * Math.pow(loadNorm, 0.75);
     const kneeAng = rad(P.kneeAngulationDeg) * Math.pow(loadNorm, 0.75);
@@ -268,10 +287,16 @@ export class TurnModel {
      * スタンス幅とトップの前後差（内スキーの先行）は、意識して作るものではなく
      * エッジ角の結果として現れる。エッジが寝れば自然に消える。 */
     const phase0 = (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle;
-    const edgeSin = Math.max(0, Math.sin(Math.max(0, edgeAngle)));
-    const stance = P.stanceWidth * (0.72 + 0.48 * edgeSin);
-    const innerLead = Math.min(0.32, stance * Math.tan(
-      THREE.MathUtils.clamp(edgeAngle, 0, rad(78))) * P.leadFactor);
+    const fg = this._footGeom(edgeAngle);
+    const stance = fg.stance;
+    const innerLead = fg.lead;
+
+    /* --- 外向角 ---
+     * 幾何ぶん（身体は谷を向き続ける）＋ 意識ぶん（山回りで作る）
+     * ＋ 足元ぶん（内足が前に出たぶん骨盤も引っぱられる）*/
+    const cs = this._counterShape(d, phase0, fg.yaw);
+    const counter = rad(P.counterDeg) * cs.pelvis / this.counterShapeMax;
+    const counterSpine = rad(P.counterDeg) * cs.spine / this.counterShapeMax;
 
     const trackCenter = this.trackPoint(u);
     const half = stance / 2;

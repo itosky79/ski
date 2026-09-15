@@ -453,6 +453,10 @@ export function createSkier(opts = {}) {
     const rot = sgn * Math.acos(THREE.MathUtils.clamp(a1.dot(a2), -1, 1));
     state.angles.hipRotation = -rot * sgnOut;   // 内旋を + にする
     state.outerSide = outerSide;
+    // 内腰がどれだけ前に出ているか（足元の先行が骨盤に伝わった量）
+    const innerHip = outwardIsRight ? hipL : hipR;
+    const outerHip = outwardIsRight ? hipR : hipL;
+    state.angles.hipLead = innerHip.clone().sub(outerHip).dot(s.tangent);
 
     return state;
   }

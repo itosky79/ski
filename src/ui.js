@@ -94,6 +94,8 @@ export class UI {
       { k: 'edge', label: 'エッジ角', unit: '°' },
       { k: 'load', label: '外脚が支える力', unit: '体重比' },
       { k: 'share', label: '外脚の荷重配分', unit: '%' },
+      { k: 'lead', label: '内スキーの先行', unit: 'cm' },
+      { k: 'hipLead', label: '内腰の先行', unit: 'cm' },
       { k: 'carve', label: 'カービング判定', unit: '', wide: true },
     ];
     this.motionDefs = [
@@ -380,6 +382,8 @@ export class UI {
     set('edge', deg(s.edgeAngle).toFixed(0));
     set('load', s.loadBW.toFixed(2));
     set('share', (s.outerShare * 100).toFixed(0));
+    set('lead', ((s.innerLead ?? 0) * 100).toFixed(0));
+    set('hipLead', ((extra?.hipLead ?? 0) * 100).toFixed(0));
     const carveTxt = s.carving
       ? `カービング可（必要 ${deg(s.edgeNeeded).toFixed(0)}° ≦ 実際 ${deg(s.edgeAngle).toFixed(0)}°）`
       : `ずれる（必要 ${deg(s.edgeNeeded).toFixed(0)}° ＞ 実際 ${deg(s.edgeAngle).toFixed(0)}°）`;

@@ -189,7 +189,7 @@ function innominateGeometry(S, side) {
     bevelSize: 0.0032, bevelSegments: 2, curveSegments: 3,
   });
   // 立体化で曲げるので、先に面を細かくしておく
-  const geo = subdivideLarge(raw, 0.016, 3);
+  const geo = subdivideLarge(raw, 0.011, 4);
   raw.dispose();
   // (a, s, t) → (x = t, y = s, z = a)
   geo.rotateY(-Math.PI / 2);
@@ -220,6 +220,21 @@ function innominateGeometry(S, side) {
   geo.scale(S, S, S);
   if (side < 0) geo.scale(-1, 1, 1);     // 左側は鏡像
   return geo;
+}
+
+/** 輪郭の一部（名前の並び）を立体に写した点列を返す */
+function landmarkPath(names, S, side, t = 0.006) {
+  return names.map((n) => {
+    const row = OUTLINE.find((r) => r[0] === n);
+    const p = warpInnominate(row[1], row[2], t * thicknessAt(row[2]));
+    return new THREE.Vector3(p.x * S * side, p.y * S, p.z * S);
+  });
+}
+
+/** 点列に沿った丸い隆起（腸骨稜など） */
+function ridgeTube(points, radius, seg = 40) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  return new THREE.TubeGeometry(curve, seg, radius, 10, false);
 }
 
 /** 部位の重みから頂点カラーを塗る */
@@ -324,6 +339,9 @@ export function createPelvis(height = 1.75) {
       emissive: 0x1c2330, emissiveIntensity: 1,
     }),
     sacrum: boneMat(BONE_COLORS.sacrum.hex, { side: THREE.DoubleSide }),
+    sacrumDark: boneMat(0xb07d00, { roughness: 0.7 }),
+    crestR: boneMat(BONE_COLORS.iliumOuter.hex),
+    crestL: boneMat(BONE_COLORS.iliumInner.hex),
     acetabulum: boneMat(0xb4c2d4, { roughness: 0.55, side: THREE.DoubleSide,
       transparent: true, opacity: 0.55, depthWrite: false }),
     asis: new THREE.MeshStandardMaterial({
@@ -333,6 +351,7 @@ export function createPelvis(height = 1.75) {
   };
 
   const parts = { hip: [], sacrum: [], asis: [] };
+  const crestMeshes = {};
   const geos = {};
   const hips = {};
 
@@ -350,12 +369,39 @@ export function createPelvis(height = 1.75) {
     hips[key] = mesh;
 
     /* 寛骨臼（ソケット）：外向きの半球 */
+    // 寛骨臼は完全な球ではなく、下側に切れ込み（寛骨臼切痕）がある馬蹄形
     const cup = new THREE.Mesh(
-      new THREE.SphereGeometry(0.030 * S, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.52),
+      new THREE.SphereGeometry(0.030 * S, 28, 16, Math.PI * 0.18, Math.PI * 1.64,
+        0, Math.PI * 0.54),
       mats.acetabulum);
     cup.position.set(side * (W + 0.004 * S), HIP.y, HIP.z);
     cup.rotation.z = side > 0 ? -Math.PI / 2 : Math.PI / 2;
     group.add(cup);
+
+    /* 腸骨稜：太い縁の隆起（ここに手が当たる「腰骨」） */
+    const crestGeo = ridgeTube(
+      landmarkPath(['ASIS', 'crest_ant', 'crest_top', 'crest_post', 'PSIS'], S, side),
+      0.009 * S);
+    const crest = new THREE.Mesh(crestGeo, side > 0 ? mats.crestL : mats.crestR);
+    crest.name = 'crest_' + key;
+    crest.position.set(side * W, HIP.y, HIP.z);
+    group.add(crest);
+    crestMeshes[key] = crest;
+
+    /* 坐骨棘（骨盤の内側に突き出す小さな棘） */
+    const spineLM = innominateLandmark('ischial_spine', S);
+    const ischialSpine = new THREE.Mesh(
+      new THREE.SphereGeometry(0.010 * S, 12, 10), mats.ischium);
+    ischialSpine.scale.set(1, 1.3, 0.7);
+    ischialSpine.position.set(side * (W + spineLM.x - 0.004 * S), HIP.y + spineLM.y, HIP.z + spineLM.z);
+    group.add(ischialSpine);
+
+    /* 恥骨結節（下腹部で触れる出っぱり） */
+    const tubLM = innominateLandmark('pubic_tubercle', S);
+    const pubicTub = new THREE.Mesh(
+      new THREE.SphereGeometry(0.009 * S, 12, 10), mats.pubis);
+    pubicTub.position.set(side * (W + tubLM.x), HIP.y + tubLM.y, HIP.z + tubLM.z);
+    group.add(pubicTub);
 
     /* ASIS（上前腸骨棘）マーカー：立体化したあとの実際の位置に置く */
     const lm = innominateLandmark('ASIS', S);
@@ -370,6 +416,34 @@ export function createPelvis(height = 1.75) {
   sacrum.name = 'sacrum';
   group.add(sacrum);
   parts.sacrum.push(sacrum);
+
+  /* 正中仙骨稜（背面のとげとげした隆起）と前仙骨孔（4 対の穴） */
+  const crestPts = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    crestPts.push(new THREE.Vector3(0, (0.044 - 0.150 * t) * S,
+      (-0.036 - 0.030 * t - 0.030 * t * t) * S));
+  }
+  const sacralCrest = new THREE.Mesh(
+    ridgeTube(crestPts, 0.007 * S, 24), mats.sacrumDark);
+  sacralCrest.name = 'sacralCrest';
+  group.add(sacralCrest);
+  parts.sacrum.push(sacralCrest);
+
+  for (let i = 0; i < 4; i++) {
+    const t = 0.13 + i * 0.20;
+    const y = (0.044 - 0.150 * t) * S;
+    const z = (-0.030 - 0.030 * t - 0.030 * t * t) * S;
+    const halfW = (0.054 - 0.044 * t) * (1 - 0.15 * t * t) * S;
+    for (const sx of [1, -1]) {
+      const hole = new THREE.Mesh(
+        new THREE.SphereGeometry(0.0062 * S, 10, 8), mats.sacrumDark);
+      hole.scale.set(1, 1.15, 0.5);
+      hole.position.set(sx * halfW * 0.52, y, z + 0.012 * S);
+      group.add(hole);
+      parts.sacrum.push(hole);
+    }
+  }
 
   const coccyx = new THREE.Mesh(
     new THREE.CapsuleGeometry(0.009 * S, 0.026 * S, 4, 8), mats.sacrum);
@@ -391,10 +465,10 @@ export function createPelvis(height = 1.75) {
   /* ---- 骨盤の正面を示す矢印 ---- */
   const facing = new THREE.Group();
   const arrowMat = new THREE.MeshBasicMaterial({ color: 0x4cc3ff });
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.005 * S, 0.005 * S, 0.20 * S, 10), arrowMat);
-  shaft.position.set(0, 0, 0.16 * S); shaft.rotation.x = Math.PI / 2;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.016 * S, 0.055 * S, 14), arrowMat);
-  tip.position.set(0, 0, 0.288 * S); tip.rotation.x = Math.PI / 2;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0035 * S, 0.0035 * S, 0.15 * S, 10), arrowMat);
+  shaft.position.set(0, 0, 0.145 * S); shaft.rotation.x = Math.PI / 2;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.012 * S, 0.042 * S, 14), arrowMat);
+  tip.position.set(0, 0, 0.241 * S); tip.rotation.x = Math.PI / 2;
   facing.add(shaft, tip);
   facing.position.set(0, -0.010 * S, 0.02 * S);
   group.add(facing);
@@ -413,6 +487,10 @@ export function createPelvis(height = 1.75) {
 
   /* 初期配色 */
   const applyColors = (outerIsRight) => {
+    mats.crestR.color.set(outerIsRight ? BONE_COLORS.iliumOuter.hex : BONE_COLORS.iliumInner.hex);
+    mats.crestL.color.set(outerIsRight ? BONE_COLORS.iliumInner.hex : BONE_COLORS.iliumOuter.hex);
+    mats.crestR.emissive.copy(mats.crestR.color).multiplyScalar(0.10);
+    mats.crestL.emissive.copy(mats.crestL.color).multiplyScalar(0.10);
     paintRegions(geos.R, {
       ilium: outerIsRight ? colors.ilium : colors.iliumIn,
       ischium: colors.ischium, pubis: colors.pubis,
