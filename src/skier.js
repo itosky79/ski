@@ -402,7 +402,11 @@ export function createSkier(opts = {}) {
     const spineLateral = (1 - hipShare) * s.angulation
       * (right.dot(s.outward) > 0 ? -1 : 1);
     // 回旋：肩と骨盤の差。外側へ回す向きが +
-    const spineAxial = ((s.counterSpine ?? s.counter) - s.counter)
+    // ブロックの反作用：ポールを押した反動で肩はさらに谷を向く。
+    // 「上体は動かさない」のではなく、動かないように支えている（modeled）。
+    const blockNow = THREE.MathUtils.clamp(s.gateBlock ?? 0, 0, 1);
+    const spineAxial = (((s.counterSpine ?? s.counter) - s.counter)
+      + rad(3.0) * blockNow)
       * (right.dot(s.outward) > 0 ? -1 : 1);
     // 屈曲：前傾の深さ（荷重が高いほど深く構える）
     const spineFlex = rad(14 + 16 * s.loadNorm);
@@ -430,16 +434,47 @@ export function createSkier(opts = {}) {
 
     const shoulders = { L: shoulderL, R: shoulderR };
     const elbows = {}, hands = {};
+    /* --- ポール処理 ---
+     * アルペンは全身を使う。上体は伸びているだけではなく、
+     * 旗門に合わせて内側の腕が出て、たたいて、素早く戻る。
+     *   SL : ターニングポールを手・前腕ではたいて通る（ブロッキング）
+     *   GS : パネルが遠いので、たたくというより肩を通してよける
+     * 出し具合 s.gateBlock は kinematics が旗門までの距離から出している。 */
+    const block = THREE.MathUtils.clamp(s.gateBlock ?? 0, 0, 1);
+    // 外手は同じタイミングで前へ送る（内手を出すぶんのバランスを取る）
+    const drive = block * 0.12;
+    state.block = block;
     for (const side of ['L', 'R']) {
       const sgn = side === 'R' ? 1 : -1;
       const isOuter = (side === 'R') === outwardIsRight;
-      // 手は前方やや外側。外側の手は前に、内側の手は旗門をブロックする位置に
-      const hand = shoulders[side].clone()
-        .addScaledVector(chestFwd, isOuter ? 0.46 : 0.38)
+      // 構え：手は前方やや外側。外側の手のほうが前に出る
+      const ready = shoulders[side].clone()
+        .addScaledVector(chestFwd, (isOuter ? 0.46 + drive : 0.38))
         .addScaledVector(chestRight, sgn * 0.17)
-        .addScaledVector(s.torsoDir, isOuter ? 0.00 : 0.06);
-      const hint = chestFwd.clone().multiplyScalar(-0.4).addScaledVector(chestRight, sgn * 0.6)
-        .addScaledVector(s.torsoDir, -0.5).normalize();
+        .addScaledVector(s.torsoDir, isOuter ? -drive * 0.5 : 0.06);
+
+      let hand = ready;
+      if (!isOuter && block > 0.01 && s.gatePos) {
+        /* 内手をポールへ出す。狙うのは「ポールの決まった高さ」ではなく、
+         * 肩からいちばん近いポール上の点（＝自然に当たるところ）。
+         * ただし低すぎ・高すぎは実際に起きないので高さは 0.45〜1.35 m に収める。 */
+        const toAxis = shoulders[side].clone().sub(s.gatePos);
+        const hUp = THREE.MathUtils.clamp(toAxis.dot(s.normal), 0.45, 1.35);
+        const contact = s.gatePos.clone().addScaledVector(s.normal, hUp);
+        const reach = (seg.upperArm + seg.foreArm) * 0.97;
+        const toPole = contact.sub(shoulders[side]);
+        const dist = toPole.length();
+        if (dist > reach) toPole.multiplyScalar(reach / dist);
+        const target = shoulders[side].clone().add(toPole)
+          // はたいたあとは手が後ろへ流れる
+          .addScaledVector(s.tangent, THREE.MathUtils.clamp(-(s.gateDu ?? 0), -0.30, 0.22));
+        hand = ready.clone().lerp(target, block);
+        state.blockReach = dist;
+      }
+      // 肘の抜ける向き：ブロック中は肘を下げて前腕で受ける
+      const hint = chestFwd.clone().multiplyScalar(-0.4)
+        .addScaledVector(chestRight, sgn * 0.6)
+        .addScaledVector(s.torsoDir, -0.5 - (isOuter ? 0 : block * 0.9)).normalize();
       const el = solveIK(shoulders[side], hand, seg.upperArm, seg.foreArm, hint);
       elbow[side].position.copy(el);
       humerus[side].userData.set(shoulders[side], el);
@@ -457,11 +492,13 @@ export function createSkier(opts = {}) {
       };
       setArm(armNode[side].upper, shoulders[side], el);
       setArm(armNode[side].fore, el, hand);
-      // ストック：手から後方斜め下へ
+      // ストック：ふだんは手から後方斜め下へ。
+      // ブロック中の内側のストックは、ポールに当たらないよう前上へ立てる
+      const b = isOuter ? 0 : block;
       const tip = hand.clone()
-        .addScaledVector(s.tangent, -1.00)
-        .addScaledVector(s.normal, -0.40)
-        .addScaledVector(chestRight, sgn * 0.10);
+        .addScaledVector(s.tangent, -1.00 + b * 1.35)
+        .addScaledVector(s.normal, -0.40 + b * 1.00)
+        .addScaledVector(chestRight, sgn * (0.10 + b * 0.35));
       poles[side].userData.shaft.userData.set(hand, tip);
     }
 
@@ -524,6 +561,8 @@ export function createSkier(opts = {}) {
       // ゴーグルとチンガードの外に出す（中に入ると視界が塞がる）
       eye: headPos.clone().addScaledVector(headFwd, seg.headR * 1.30)
         .addScaledVector(headUp, seg.headR * 0.20).add(off),
+      innerHand: (outwardIsRight ? hands.L : hands.R).clone().add(off),
+      outerHand: (outwardIsRight ? hands.R : hands.L).clone().add(off),
       eyeDir: headFwd.clone(),
       eyeUp: headUp.clone(),
       pelvisFwd: fwd.clone(),

@@ -112,6 +112,8 @@ function makeModel(d, ghost = false) {
     gammaPelvis: d.gammaPelvis, activePelvis: d.activePelvis,
     gammaSpine: d.gammaSpine, activeSpine: d.activeSpine,
     innerEdgeExtraDeg: d.innerEdgeExtraDeg, leadFactor: d.leadFactor,
+    blockSigmaBefore: d.blockSigmaBefore, blockSigmaAfter: d.blockSigmaAfter,
+    blockStrength: d.blockStrength, blockHeight: d.blockHeight,
     leadToPelvis: d.leadToPelvis,
     skiSidecutR: d.skiSidecutR,
     height: ANTHRO.height, mass: ANTHRO.mass,
@@ -398,6 +400,7 @@ function tick() {
       ghost.state.anchors.head.clone().addScaledVector(model.C, GHOST_OFFSET)
         .addScaledVector(model.N, 0.35), 'small');
   }
+  course.updateGates(app.u);
   forceView.update(s);
   guides.update(s, skier);
   // 動作ガイド：少し先の姿勢との差＝「いま何をしているか」
@@ -449,7 +452,7 @@ window.addEventListener('keydown', (e) => {
 /* ---------- 起動 ---------- */
 // デバッグ／授業用のハンドル（コンソールから触れるように）
 window.skiTrainer = { app, get model() { return model; }, get skier() { return skier; },
-  camRig, ui, scene, renderer };
+  camRig, ui, scene, renderer, course, motion };
 
 try {
   ui.setLevel(app.level);

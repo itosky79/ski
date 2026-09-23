@@ -85,6 +85,17 @@ export class TurnModel {
       // これを決めると、力の釣り合いから圧の中心（CP）が板のどこに乗るかが決まる。
       foreTarget: 0.01,
       foreAmp: 0.05,
+      /* --- ポール処理 ---
+       * SL はターニングポールを手・前腕・すねではたいて通る（ブロッキング）。
+       * GS はパネルが遠いので、たたくというより肩でよける。
+       * blockSigmaBefore/After: 旗門までの距離（m）に対する効き方の広がり。
+       *   近づくときはゆっくり、通り過ぎたら素早く戻すので前後で非対称。
+       * blockStrength : 手をポールまで出す割合（1 = ポールに触れる）
+       * blockHeight   : ポールのどの高さをたたくか（雪面から m） */
+      blockSigmaBefore: 1.30,
+      blockSigmaAfter: 0.55,
+      blockStrength: 1.0,
+      blockHeight: 0.95,
     }, params);
     this.rebuild();
   }
@@ -334,7 +345,19 @@ export class TurnModel {
 
     const phase = (((u % this.halfCycle) + this.halfCycle) % this.halfCycle) / this.halfCycle;
 
+    /* --- ポール処理 ---
+     * いま向かっているターニングポールまでの距離（進行方向に沿った m）から、
+     * 「手をポールへ出している度合い」を 0〜1 で出す。
+     * 近づくときはゆっくり、通り過ぎたら素早く戻すので前後で非対称にしてある。 */
+    const pole = this.turningPole(d.cycle);
+    const gateDu = u - pole.u;
+    const sig = gateDu < 0 ? P.blockSigmaBefore : P.blockSigmaAfter;
+    const gateBlock = Math.exp(-((gateDu / sig) ** 2)) * P.blockStrength;
+
     return {
+      gateDu, gateBlock,
+      gatePos: pole.pos,
+      gateContact: pole.pos.clone().addScaledVector(this.N, P.blockHeight),
       u, phase, phaseInfo: phaseInfo(phase), cycle: d.cycle,
       pos: trackCenter, pressure, com, hip, legLen, torsoLen,
       footL, footR, outerFoot, innerFoot, outerIsRight, outerShare,
@@ -363,6 +386,18 @@ export class TurnModel {
   uFromPhase(phase, cycle = 0) { return (phase + cycle) * this.halfCycle; }
 
   /* ---------- 旗門 ---------- */
+  /**
+   * その周回のターニングポール（u と位置）。gates() と同じ式で 1 本だけ求める。
+   * @param {number} cycle 何ターン目か
+   */
+  turningPole(cycle) {
+    const uApex = this.L / 4 + cycle * this.halfCycle;
+    const u = uApex + this.p.gateLag * this.halfCycle;
+    const side = Math.sign(Math.sin(this.theta(uApex))) || 1;
+    const wTurn = side * Math.max(0.1, Math.abs(this.w(u)) - this.p.poleClearance);
+    return { u, side, wTurn, pos: this.onSlope(u, wTurn) };
+  }
+
   gates(count = 8, startCycle = 0) {
     const out = [];
     for (let i = 0; i < count; i++) {

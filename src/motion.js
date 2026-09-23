@@ -71,6 +71,12 @@ export const MOVES = [
     why: '前に乗るとトップが噛む。後ろに残ると板が抜ける。',
   },
   {
+    key: 'block', kind: 'push', ref: 7.5,
+    get: (s) => s.gateBlock ?? 0,
+    up: '内側の手でポールをたたきに行く', dn: 'たたいた手を前へ戻す',
+    why: 'アルペンは全身。上体は伸びているのではなく、旗門を処理している。',
+  },
+  {
     key: 'spine', kind: 'turn', ref: 1.4,
     get: (s) => (s.counterSpine ?? s.counter) - s.counter,
     up: 'みぞおちを谷へ向ける', dn: '上体のひねりをほどく',
@@ -197,6 +203,12 @@ export class MotionGuide {
       fore: { kind: 'push', at: a.outerAnkle.clone().addScaledVector(s.normal, 0.14),
         dir: s.tangent.clone() },
     };
+    if (a.innerHand && s.gatePos) {
+      const toPole = s.gatePos.clone().addScaledVector(s.normal, 0.95).sub(a.innerHand);
+      if (toPole.lengthSq() > 1e-6) {
+        place.block = { kind: 'push', at: a.innerHand.clone(), dir: toPole.normalize() };
+      }
+    }
 
     this.active = [];
     let slot = 0;

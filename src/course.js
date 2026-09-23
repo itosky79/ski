@@ -62,6 +62,8 @@ export class Course {
   /** モデルに合わせてコースを作り直す */
   build(model, { gateCount = 9, discipline }) {
     const { D, C, N } = model;
+    this._fall = D.clone();
+    this._across = C.clone();
     const len = model.halfCycle * (gateCount + 4);
     const width = Math.max(70, model.A * 8 + 60);
 
@@ -89,6 +91,7 @@ export class Course {
     /* --- 旗門 --- */
     this.gatesG.clear();
     const gates = model.gates(gateCount, 0);
+    const turning = [];                 // SL：たたかれてしなるポール
     for (const g of gates) {
       const color = g.color === 'red' ? 0xe03131 : 0x1c6fd6;
       if (discipline.hasPanel) {
@@ -98,15 +101,34 @@ export class Course {
         for (const base of [g.turning, g.outer]) {
           const a = base.clone().addScaledVector(across, -pw / 2);
           const b = base.clone().addScaledVector(across, pw / 2);
-          this.gatesG.add(this._pole(a, N, color), this._pole(b, N, color));
-          this.gatesG.add(this._panel(a, b, N, color, discipline));
+          const parts = [this._pole(a, N, color), this._pole(b, N, color),
+            this._panel(a, b, N, color, discipline)];
+          if (base === g.turning) {
+            // ターニング側は選手が肩で押していくので、旗門ごと傾く
+            const unit = this._pivot(base, N, Math.sign(g.wTurn) || 1, parts);
+            unit.userData.turning = g;
+            unit.userData.bend = (v) => { unit.userData.tilt.rotation.x = v * 0.20; };
+            turning.push(unit);
+            this.gatesG.add(unit);
+          } else {
+            for (const p of parts) this.gatesG.add(p);
+          }
         }
       } else {
-        this.gatesG.add(this._pole(g.turning, N, color));
-        this.gatesG.add(this._pole(g.outer, N, color, 0.85));
+        const t = this._pole(g.turning, N, color, 1, Math.sign(g.wTurn) || 1);
+        t.userData.turning = g;
+        t.userData.bend = (v) => {
+          const share = [0.26, 0.34, 0.40];      // 上の節ほど大きく＝弓なり
+          t.userData.joints.forEach((j, i) => { j.rotation.x = v * share[i]; });
+        };
+        turning.push(t);
+        this.gatesG.add(t);
+        this.gatesG.add(this._pole(g.outer, N, color, 0.85, Math.sign(g.wTurn) || 1));
       }
     }
     this.gates = gates;
+    this.turningPoles = turning;
+    this.hasPanel = !!discipline.hasPanel;
 
     /* --- シュプール（両スキーの通り道） --- */
     this.tracksG.clear();
@@ -139,17 +161,74 @@ export class Course {
     return this;
   }
 
-  _pole(base, N, color, scale = 1) {
+  /**
+   * ポール 1 本。根元を原点にして、ローカル +y を雪面法線に合わせる。
+   * ローカル +z は「たたかれたときに倒れる向き」＝斜面下方向に、
+   * コースの外側へ少し振ったもの。こうしておくと、しなりは
+   * ローカル +x まわりの回転だけで出せる。
+   *
+   * 軸は 3 節に分けてあり、上の節ほど大きく曲げる。
+   * 1 本の棒を根元で倒すと「折れた」ように見えるが、
+   * 実物のフレックスポールは弓なりにしなるため。
+   */
+  _pole(base, N, color, scale = 1, away = 0) {
     const g = new THREE.Group();
     const h = POLE_H * scale;
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(POLE_R, POLE_R * 1.15, h, 10),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
-    shaft.position.set(0, h / 2, 0);
-    g.add(shaft);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
+    const nSeg = 3;
+    const joints = [];
+    let parent = g;
+    for (let i = 0; i < nSeg; i++) {
+      const j = new THREE.Group();
+      if (i > 0) j.position.y = h / nSeg;
+      const r0 = POLE_R * (1.15 - 0.10 * i), r1 = POLE_R * (1.15 - 0.10 * (i + 1));
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h / nSeg, 10), mat);
+      seg.position.y = h / nSeg / 2;
+      seg.castShadow = true;
+      j.add(seg);
+      parent.add(j);
+      parent = j;
+      joints.push(j);
+    }
+    g.userData.joints = joints;
     g.position.copy(base);
-    g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), N);
+    // 倒れる向き：フォールライン ＋ コースの外側へ少し
+    const D = this._fall ?? new THREE.Vector3(0, 0, 1);
+    const C = this._across ?? new THREE.Vector3(1, 0, 0);
+    const dir = D.clone().addScaledVector(C, away * 0.55);
+    const Z = dir.addScaledVector(N, -dir.dot(N)).normalize();
+    const X = new THREE.Vector3().crossVectors(N, Z).normalize();
+    g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, N, Z));
     return g;
+  }
+
+  /**
+   * すでにワールド座標で作った部品を、ポールの根元を中心にした
+   * ヒンジの下へ付け替える。GS は旗門ごと傾くのでこれが要る。
+   */
+  _pivot(base, N, away, parts) {
+    const pivot = new THREE.Group();
+    // 基準姿勢（quaternion）を持つノードに rotation.x を書くと、
+    // Euler ↔ quaternion が連動しているせいで基準姿勢そのものが壊れる。
+    // 傾ける用のノードを内側にもう 1 つ作って、そちらだけ回す。
+    const tilt = new THREE.Group();
+    pivot.add(tilt);
+    pivot.userData.tilt = tilt;
+    pivot.position.copy(base);
+    const D = this._fall ?? new THREE.Vector3(0, 0, 1);
+    const C = this._across ?? new THREE.Vector3(1, 0, 0);
+    const dir = D.clone().addScaledVector(C, away * 0.55);
+    const Z = dir.addScaledVector(N, -dir.dot(N)).normalize();
+    const X = new THREE.Vector3().crossVectors(N, Z).normalize();
+    pivot.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, N, Z));
+    pivot.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(pivot.matrixWorld).invert();
+    for (const p of parts) {
+      p.updateMatrix();            // position/quaternion を matrix に反映してから変換する
+      p.applyMatrix4(inv);
+      tilt.add(p);
+    }
+    return pivot;
   }
 
   /** パネル：約 75 × 50 cm、下端は雪面から約 1 m [ICR 901.2.2] */
@@ -167,6 +246,38 @@ export class Course {
     panel.position.copy(mid).addScaledVector(up, (disc.panelBottom ?? 1.0) + (disc.panelH ?? 0.5) / 2);
     g.add(panel);
     return g;
+  }
+
+  /**
+   * ポールのしなり。SL のターニングポールは根元がヒンジになっていて、
+   * たたかれると倒れ、通り過ぎたあと減衰しながら揺れて戻る。
+   *
+   * 時刻の状態を持たず、<b>滑走距離 u だけの関数</b>にしてある。
+   * こうするとタイムラインを手でドラッグしても矛盾なく再現される。
+   *
+   *   x = u − ポールの u
+   *   x < 0            : 近づくぶんだけ倒れていく
+   *   x ≥ 0            : maxBend · exp(−x/L) · cos(2πx/P)   （減衰振動）
+   *
+   * @param {number} u いまの滑走距離
+   */
+  updateGates(u) {
+    if (!this.turningPoles) return;
+    const maxBend = 1.45;                // rad（先端まで合計でおよそ 83°）
+    const hitAt = -0.12;                 // 手が当たるのは身体が並ぶ少し手前
+    const rise = 0.85;                   // 当たるまでに倒れていく距離 [m]
+    const L = 2.4, P = 2.0;              // 戻りの減衰距離と揺れの周期 [m]
+    for (const g of this.turningPoles) {
+      const x = u - g.userData.turning.u;
+      let bend;
+      if (x < hitAt - rise) bend = 0;
+      else if (x < hitAt) bend = maxBend * ((x - hitAt + rise) / rise) ** 3;
+      else {
+        const t = x - hitAt;
+        bend = maxBend * Math.exp(-t / L) * Math.cos((Math.PI * 2 * t) / P);
+      }
+      g.userData.bend(bend);
+    }
   }
 
   setVisible({ tracks, gates }) {

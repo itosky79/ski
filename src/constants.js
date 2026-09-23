@@ -96,6 +96,8 @@ export const DISCIPLINES = {
     glideAmp: 0.30,         // その位相変化（前半は前に乗り、後半は後ろに残る）
     skew: 0.03,             // 軌跡のわずかな非対称（荷重のピークがフォールラインの少し後に来る）
     gateLag: 0.09,
+    // ポール処理：SL はポールをはたいて通る
+    blockSigmaBefore: 1.30, blockSigmaAfter: 0.55, blockStrength: 1.00, blockHeight: 0.95,
     outerShareMax: 0.80,    // 外脚荷重の最大配分（実測の 80:20）
     outerShareLate: 0.60,   // 山回り後半（60:40）
     gammaPelvis: 0.55, activePelvis: 0.25,
@@ -131,6 +133,8 @@ export const DISCIPLINES = {
     glideAmp: 0.28,
     skew: 0.03,
     gateLag: 0.10,
+    // GS はパネルが遠いので、たたくというより肩でよける
+    blockSigmaBefore: 2.60, blockSigmaAfter: 1.20, blockStrength: 0.42, blockHeight: 1.15,
     outerShareMax: 0.72,    // 実測の 70:30
     outerShareLate: 0.60,
     gammaPelvis: 0.38, activePelvis: 0.18,
