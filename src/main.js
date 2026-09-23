@@ -390,11 +390,13 @@ function tick() {
 
   const s = model.sample(app.u);
   const look = nextGateTarget(app.u);
-  skier.update(s, { lookTarget: look });
+  // 手の基準に使う「少し先の重心」。手はここを追うので運びが連続になる
+  const ahead = model.sample(app.u + 0.42);
+  skier.update(s, { lookTarget: look, ahead });
   if (app.show.ghost) {
     // 比較用のゴーストは横に 2.6 m ずらして「並走」させる
     const gs = ghostModel.sample(app.u);
-    ghost.update(gs, { lookTarget: look });
+    ghost.update(gs, { lookTarget: look, ahead: ghostModel.sample(app.u + 0.42) });
     ghost.root.position.add(model.C.clone().multiplyScalar(GHOST_OFFSET));
     labels.set('ghost', '外向・外傾なし（内傾だけ）',
       ghost.state.anchors.head.clone().addScaledVector(model.C, GHOST_OFFSET)

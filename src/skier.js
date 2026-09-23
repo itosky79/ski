@@ -315,6 +315,11 @@ export function createSkier(opts = {}) {
 
   /** 姿勢を更新する。s は TurnModel.sample() の戻り値 */
   function update(s, cfg = {}) {
+    /* 重心の補正（最後に root をずらす）は、このフレームの計算が全部
+     * 終わってから決まる。その前に getWorldPosition で胸や肩を読むと
+     * <b>1 フレーム前の補正が混ざる</b>ので、上体だけが遅れて動く。
+     * 計算中は root をゼロに戻しておき、補正は最後にまとめて掛ける。 */
+    root.position.set(0, 0, 0);
     const outwardIsRight = s.eLat.dot(s.outward) > 0;
     pelvis.setOuterSide(outwardIsRight);
 
@@ -354,11 +359,24 @@ export function createSkier(opts = {}) {
       const skiSide = new THREE.Vector3().crossVectors(skiNormal, s.tangent).normalize();
       skiNormals[side] = skiNormal;
 
-      const lead = isOuter ? 0 : s.innerLead;
+      /* トップの前後差。真偽値（外脚か内脚か）で 0/innerLead を切り替えると、
+       * 切り替えの瞬間に前後差が左右で入れ替わって足が跳ぶ。
+       * 荷重配分からの連続な量にして、前後へ半分ずつ振り分ける。 */
+      const shareSide = isOuter ? s.outerShare : 1 - s.outerShare;
+      const leadW = (0.5 - shareSide) / Math.max(1e-3, (s.outerShareMax ?? 0.8) - 0.5);
+      const lead = 0.5 * s.innerLead * leadW;
       const contact = feet[side].clone().addScaledVector(s.tangent, lead);
-      // 接雪しているのはエッジ。板の中心はそこから半幅ぶん外側
-      const toOutward = skiSide.dot(s.outward) > 0 ? 1 : -1;
-      const center = contact.clone().addScaledVector(skiSide, toOutward * disc.skiWaist * 0.5);
+      /* 接雪しているのはエッジなので、板の中心はそこから半幅ぶん横。
+       * ただしフラットに近いときは板の裏全体が接しているので差はない。
+       * エッジ角でなめらかに効かせないと、エッジが入れ替わる瞬間に
+       * 板が 1 ウエスト幅ぶん横へ跳ぶ。 */
+      /* 接雪しているのは「下がっているほうのエッジ」。板がフラットなら差はない。
+       * ターンの内外（符号が裏返る量）を使わず、板の横軸が雪面法線に対して
+       * どれだけ下がっているかだけで決めれば、エッジの入れ替わりを
+       * 0 を通ってなめらかに越えられる。 */
+      const lowering = -skiSide.dot(s.normal);
+      const center = contact.clone().addScaledVector(skiSide,
+        -disc.skiWaist * 0.5 * Math.tanh(lowering / Math.sin(rad(8))));
       skiCenters[side] = center;
       ankles[side] = center.clone().addScaledVector(skiNormal, seg.ankle);
 
@@ -411,6 +429,7 @@ export function createSkier(opts = {}) {
     // 屈曲：前傾の深さ（荷重が高いほど深く構える）
     const spineFlex = rad(14 + 16 * s.loadNorm);
     torso.update(spineLateral, spineAxial, spineFlex);
+    state.spine = { lateral: spineLateral, axial: spineAxial, flex: spineFlex };
 
     /* 体幹から出てくるフレーム */
     const chestPos = new THREE.Vector3();
@@ -434,47 +453,74 @@ export function createSkier(opts = {}) {
 
     const shoulders = { L: shoulderL, R: shoulderR };
     const elbows = {}, hands = {};
-    /* --- ポール処理 ---
-     * アルペンは全身を使う。上体は伸びているだけではなく、
-     * 旗門に合わせて内側の腕が出て、たたいて、素早く戻る。
-     *   SL : ターニングポールを手・前腕ではたいて通る（ブロッキング）
-     *   GS : パネルが遠いので、たたくというより肩を通してよける
-     * 出し具合 s.gateBlock は kinematics が旗門までの距離から出している。 */
+    /* --- 手の運び ---
+     * 上体が「ポールに向かうまでスムーズでない」のは、手を
+     * 「胸のフレームに対する固定オフセット」で置いていたから。
+     * 外脚・内脚が入れ替わる瞬間にそのオフセットも入れ替わるので、
+     * 身体は動いていないのに手が 10 cm ほど跳んでいた。
+     *
+     * 実際のレーサーの手は、身体の前で<b>谷へ向かって流れ続ける</b>。
+     * そこで基準点を「重心の軌跡を少し先へ進めた点」にする。
+     * 軌跡はモデルが持っている連続な曲線なので、手の運びも自然に連続になり、
+     * 身体がその下で回り込むぶんだけ、手が身体に対して動いて見える。
+     *
+     * 外脚側／内脚側の区別も真偽値ではなく<b>荷重配分</b>で連続に混ぜる。
+     * 切り替えでは配分が 50:50 なので、左右の役割がなめらかに入れ替わる。 */
     const block = THREE.MathUtils.clamp(s.gateBlock ?? 0, 0, 1);
-    // 外手は同じタイミングで前へ送る（内手を出すぶんのバランスを取る）
-    const drive = block * 0.12;
     state.block = block;
+    const ahead = cfg.ahead ?? s;                 // u ＋ 約 0.4 m のサンプル
+    state.blockPull = 0;
+    const handBase = ahead.com.clone()
+      .addScaledVector(s.normal, 0.16)
+      .addScaledVector(s.tangent, 0.06);
+    const reach = (seg.upperArm + seg.foreArm) * 0.97;
+    /** 届く範囲へなめらかに収める（clamp だと境界で折れる） */
+    const softReach = (from, to) => {
+      const v = to.clone().sub(from);
+      const d = v.length();
+      if (d < 1e-6) return to.clone();
+      return from.clone().addScaledVector(v, reach * Math.tanh(d / reach) / d);
+    };
+
     for (const side of ['L', 'R']) {
       const sgn = side === 'R' ? 1 : -1;
       const isOuter = (side === 'R') === outwardIsRight;
-      // 構え：手は前方やや外側。外側の手のほうが前に出る
-      const ready = shoulders[side].clone()
-        .addScaledVector(chestFwd, (isOuter ? 0.46 + drive : 0.38))
-        .addScaledVector(chestRight, sgn * 0.17)
-        .addScaledVector(s.torsoDir, isOuter ? -drive * 0.5 : 0.06);
+      // この脚が受け持っている荷重の割合。切り替えでは左右とも 0.5 になる
+      const share = isOuter ? s.outerShare : 1 - s.outerShare;
+      const innerness = THREE.MathUtils.smoothstep(1 - share, 0.35, 0.60);
+
+      /* 構え：肩から「どの向きへ」「どれだけ伸ばすか」で決める。
+       * 目標点を置いて届く範囲へ縮めると、縮めたぶん左右の開きまで
+       * つぶれてしまい、手が胸の前で団子になる。
+       * 向きは胸のフレームで作り、そこへ「谷へ流れる向き」を混ぜる。 */
+      const ext = reach * 0.92;                      // 肘を少し曲げた長さ
+      const aim = chestFwd.clone().multiplyScalar(0.80)
+        .addScaledVector(chestRight, sgn * (0.52 - 0.08 * share))
+        .addScaledVector(s.normal, -0.16 + 0.12 * share)
+        .normalize();
+      const flow = handBase.clone().sub(shoulders[side]);
+      if (flow.lengthSq() > 1e-6) aim.lerp(flow.normalize(), 0.35).normalize();
+      const ready = shoulders[side].clone().addScaledVector(aim, ext);
 
       let hand = ready;
-      if (!isOuter && block > 0.01 && s.gatePos) {
-        /* 内手をポールへ出す。狙うのは「ポールの決まった高さ」ではなく、
-         * 肩からいちばん近いポール上の点（＝自然に当たるところ）。
-         * ただし低すぎ・高すぎは実際に起きないので高さは 0.45〜1.35 m に収める。 */
-        const toAxis = shoulders[side].clone().sub(s.gatePos);
-        const hUp = THREE.MathUtils.clamp(toAxis.dot(s.normal), 0.45, 1.35);
-        const contact = s.gatePos.clone().addScaledVector(s.normal, hUp);
-        const reach = (seg.upperArm + seg.foreArm) * 0.97;
-        const toPole = contact.sub(shoulders[side]);
-        const dist = toPole.length();
-        if (dist > reach) toPole.multiplyScalar(reach / dist);
-        const target = shoulders[side].clone().add(toPole)
-          // はたいたあとは手が後ろへ流れる
-          .addScaledVector(s.tangent, THREE.MathUtils.clamp(-(s.gateDu ?? 0), -0.30, 0.22));
-        hand = ready.clone().lerp(target, block);
-        state.blockReach = dist;
+      const pull = block * innerness;
+      if (pull > 0.005 && s.gatePos) {
+        /* 内側の手をポールへ。狙うのは決まった高さではなく、
+         * 肩からいちばん近いポール上の点（＝自然に当たるところ）。 */
+        const hUp = THREE.MathUtils.clamp(
+          shoulders[side].clone().sub(s.gatePos).dot(s.normal), 0.45, 1.35);
+        const contact = s.gatePos.clone().addScaledVector(s.normal, hUp)
+          // たたく前は手が先行し、たたいたあとは後ろへ流れる
+          .addScaledVector(s.tangent, -0.30 * Math.tanh((s.gateDu ?? 0) / 0.8));
+        hand = ready.clone().lerp(contact, pull);
+        state.blockPull = Math.max(state.blockPull ?? 0, pull);
       }
+      hand = softReach(shoulders[side], hand);
+
       // 肘の抜ける向き：ブロック中は肘を下げて前腕で受ける
       const hint = chestFwd.clone().multiplyScalar(-0.4)
         .addScaledVector(chestRight, sgn * 0.6)
-        .addScaledVector(s.torsoDir, -0.5 - (isOuter ? 0 : block * 0.9)).normalize();
+        .addScaledVector(s.torsoDir, -0.5 - pull * 0.9).normalize();
       const el = solveIK(shoulders[side], hand, seg.upperArm, seg.foreArm, hint);
       elbow[side].position.copy(el);
       humerus[side].userData.set(shoulders[side], el);
@@ -494,7 +540,7 @@ export function createSkier(opts = {}) {
       setArm(armNode[side].fore, el, hand);
       // ストック：ふだんは手から後方斜め下へ。
       // ブロック中の内側のストックは、ポールに当たらないよう前上へ立てる
-      const b = isOuter ? 0 : block;
+      const b = pull;
       const tip = hand.clone()
         .addScaledVector(s.tangent, -1.00 + b * 1.35)
         .addScaledVector(s.normal, -0.40 + b * 1.00)
@@ -563,6 +609,9 @@ export function createSkier(opts = {}) {
         .addScaledVector(headUp, seg.headR * 0.20).add(off),
       innerHand: (outwardIsRight ? hands.L : hands.R).clone().add(off),
       outerHand: (outwardIsRight ? hands.R : hands.L).clone().add(off),
+      handL: hands.L.clone().add(off), handR: hands.R.clone().add(off),
+      kneeLw: kneePos.L.clone().add(off), kneeRw: kneePos.R.clone().add(off),
+      shoulderLw: shoulders.L.clone().add(off), shoulderRw: shoulders.R.clone().add(off),
       eyeDir: headFwd.clone(),
       eyeUp: headUp.clone(),
       pelvisFwd: fwd.clone(),

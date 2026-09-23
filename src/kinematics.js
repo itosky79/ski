@@ -130,8 +130,10 @@ export class TurnModel {
     this.geomMax = Math.max(...raw.map((d) => Math.abs(d.counterGeom)), 1e-6);
     for (let i = 0; i < raw.length; i++) {
       const ph = i / (NS - 1);
+      // 絶対値で正規化する。外向は前半が負・後半が正の非対称な形なので、
+      // 片側だけ見て正規化すると振幅が counterDeg に届かない。
       shapeMax = Math.max(shapeMax,
-        this._counterShape(raw[i], ph, this._leadYaw(raw[i], ph)).pelvis);
+        Math.abs(this._counterShape(raw[i], ph, this._leadYaw(raw[i], ph)).pelvis));
     }
     this.counterShapeMax = Math.max(shapeMax, 1e-6);
   }
@@ -140,11 +142,18 @@ export class TurnModel {
    * その位相でのスタンス幅・内足の先行量・足のラインの角度を返す。
    * どれもエッジ角から決まる「結果」であって、意識して作る量ではない。
    */
+  /**
+   * スタンス幅とトップの前後差。
+   *
+   * 見ているのは「板がどれだけ傾いているか」なので<b>エッジ角の絶対値</b>を使う。
+   * 符号（どちらのエッジに乗っているか）で場合分けすると、
+   * 切り替えでエッジ角の符号が変わった瞬間にスタンスが跳ぶ。
+   */
   _footGeom(edgeAngle) {
     const P = this.p;
-    const stance = P.stanceWidth * (0.72 + 0.48 * Math.max(0, Math.sin(Math.max(0, edgeAngle))));
-    const lead = Math.min(0.32, stance * Math.tan(
-      THREE.MathUtils.clamp(edgeAngle, 0, rad(78))) * P.leadFactor);
+    const e = Math.min(Math.abs(edgeAngle), rad(78));
+    const stance = P.stanceWidth * (0.72 + 0.48 * Math.sin(e));
+    const lead = Math.min(0.32, stance * Math.tan(e) * P.leadFactor);
     return { stance, lead, yaw: Math.atan2(lead, stance) };
   }
 
@@ -162,14 +171,28 @@ export class TurnModel {
    *   幾何ぶん  : 身体はフォールラインを向き続けるので、スキーとの差がそのまま外向になる
    *   意識ぶん  : 山回りでさらに骨盤を外へ向ける動き（後半で立ち上がる）
    */
+  /**
+   * 外向の形。
+   *   幾何ぶん g : スキーとフォールラインのずれ。ターンの向きで符号が変わる。
+   *   意識ぶん act: 山回りで自分から作る（＝筋でひねる）ぶん。符号を持たない。
+   *   足元ぶん   : 内足が前に出たぶん骨盤も引っぱられる。符号を持たない。
+   *
+   * 符号を持たない 2 つは、<b>切り替えまでに 0 へ戻して</b>おかないといけない。
+   * 外向は「いまのターンの外側はどちらか」を基準に測る量なので、
+   * 切り替えでその基準が裏返る。基準が裏返る瞬間に 0 でない値が残っていると、
+   * 身体は動いていないのに骨盤の向きが跳ぶ（実際に 7°ほど跳んでいた）。
+   * ひねりを切り替えでほどくのは、滑りとしても正しい。
+   */
   _counterShape(d, phase, leadYaw = 0) {
     const P = this.p;
     const g = d.counterGeom;
-    const act = smoothstep(0.15, 0.78, phase) * this.geomMax;
-    // leadYaw: 内足が前に出たぶん、骨盤も引っぱられて外を向く（足元との連動）
+    // 切り替えの前後どちらでも 0 にする（片側だけだと裏返る瞬間に跳ぶ）
+    const rel = smoothstep(0.00, 0.14, phase) * (1 - smoothstep(0.86, 1.00, phase));
+    const act = smoothstep(0.15, 0.78, phase) * this.geomMax * rel;
+    const ly = leadYaw * rel;
     return {
-      pelvis: P.gammaPelvis * g + P.activePelvis * act + P.leadToPelvis * leadYaw,
-      spine: P.gammaSpine * g + P.activeSpine * act + P.leadToPelvis * 0.6 * leadYaw,
+      pelvis: P.gammaPelvis * g + P.activePelvis * act + P.leadToPelvis * ly,
+      spine: P.gammaSpine * g + P.activeSpine * act + P.leadToPelvis * 0.6 * ly,
     };
   }
 
@@ -279,23 +302,48 @@ export class TurnModel {
     const loadNorm = THREE.MathUtils.clamp(
       (d.loadBW - this.loadMin) / Math.max(1e-6, this.loadMax - this.loadMin), 0, 1);
 
+    /* 曲率がほぼ 0 の窓＝切り替え。ここでは「ターンのために」する動きが
+     * すべて意味を失う（曲がっていないのだから外側も内側もない）。
+     * 外傾も膝の傾けも内傾もこの窓で 0 へ寄せる。そうしないと、
+     * 基準が裏返る瞬間に「外側へ折った 7°」が一気に反対側へ飛ぶ。 */
+    const kn = Math.min(1, Math.abs(d.kappa) * this.radiusMin);   // 曲率（0〜1）
+    const flat = Math.exp(-((kn / 0.11) ** 2));
+    const turning = 1 - 0.97 * flat;
+
     // 外傾角・膝の角度は荷重に応じて深くなる
-    const angulation = rad(P.angulationDeg) * Math.pow(loadNorm, 0.75);
-    const kneeAng = rad(P.kneeAngulationDeg) * Math.pow(loadNorm, 0.75);
+    const angulation = rad(P.angulationDeg) * Math.pow(loadNorm, 0.75) * turning;
+    const kneeAng = rad(P.kneeAngulationDeg) * Math.pow(loadNorm, 0.75) * turning;
 
     // 脚の長さ（接雪点→股関節）。荷重が高いほど伸ばす
     const legLen = P.height * (0.455 + 0.075 * loadNorm);
     const torsoLen = P.height * 0.288;
 
-    const fr = this.solveFrontal(d.lambda, angulation, legLen, torsoLen);
+    /* --- 切り替えでは板はフラットを通る ---
+     * 準静的な釣り合いだけで内傾角を決めると、切り替えの瞬間でも
+     * 「脚の線＝力の線＝ほぼ鉛直」になる。斜面をナナメに横切っている間、
+     * 鉛直に立つと板は斜度の横成分ぶん（ここでは約 8.5°）エッジが立ったままで、
+     * しかもターンの内外が裏返るので、17° の持ち替えが一瞬で起きてしまう。
+     *
+     * 実際の切り替えは、身体が板を乗り越えていく間に板が<b>フラットを通る</b>。
+     * 曲がっていない瞬間は求心力の要求が 0 で、そもそも横に傾く理由がない。
+     * そこで<b>曲率がほぼ 0 の窓でだけ</b>脚の線を斜面法線へ寄せる。
+     * 曲率がある間（＝釣り合いの主張が効く間）は何も変えない。 */
+    const lambda = d.lambda * turning;
+
+    const fr = this.solveFrontal(lambda, angulation, legLen, torsoLen);
 
     // 3D 姿勢ベクトル：uLeg を進行方向軸まわりに回して脚・上体の向きを作る
     const axis = d.tangent;
-    const legDir = rotateToward(d.uLeg, d.inward, axis, fr.phiLeg - d.lambda);
-    const torsoDir = rotateToward(d.uLeg, d.inward, axis, fr.phiTorso - d.lambda);
+    const legDir = rotateToward(d.uLeg, d.inward, axis, fr.phiLeg - lambda);
+    const torsoDir = rotateToward(d.uLeg, d.inward, axis, fr.phiTorso - lambda);
 
-    const edgeAngle = fr.phiLeg + kneeAng;            // 外スキーのエッジ角
-    const edgeAngleInner = edgeAngle + rad(P.innerEdgeExtraDeg) * loadNorm;
+    /* 膝の傾け（ニーアンギュレーション）は、いま乗っているエッジをさらに立てる。
+     * 符号をそのまま足すと、切り替えでエッジの向きが変わったとき
+     * 「エッジ角の大きさ」が跳ぶ。tanh でなめらかな符号にして足す。 */
+    const edgeSign = Math.tanh(fr.phiLeg / rad(4));
+    const edgeAngle = fr.phiLeg + kneeAng * edgeSign;       // 外スキーのエッジ角
+    const edgeAngleInner = edgeAngle
+      + rad(P.innerEdgeExtraDeg) * loadNorm * edgeSign;
     const ratio = THREE.MathUtils.clamp(d.radius / P.skiSidecutR, 0, 1);
     const edgeNeeded = Math.acos(ratio);              // サイドカット理論の必要エッジ角
     const carving = edgeAngle >= edgeNeeded - rad(2);
@@ -322,10 +370,12 @@ export class TurnModel {
 
     /* 外脚の荷重配分：切り替えで 50 %、フォールライン手前で最大、
        山回り後半は内スキーにも乗るので下がる（実測でも 80:20 → 60:40） */
+    /* 切り替えの瞬間は必ず 50:50。外脚・内脚の区別そのものが入れ替わるので、
+     * ここで 60:40 のまま残すと「同じ脚の荷重が 0.60 から 0.40 へ跳ぶ」ことになり、
+     * 脚も手も一瞬カクつく。山回り後半の 60:40 は、戻り方の途中として出す。 */
     const rise = smoothstep(0.02, 0.40, phase0);
-    const fall = smoothstep(0.55, 0.95, phase0);
-    const outerShare = 0.5 + (P.outerShareMax - 0.5) * rise
-      - (P.outerShareMax - P.outerShareLate) * fall;
+    const fall = smoothstep(0.50, 1.00, phase0);
+    const outerShare = 0.5 + (P.outerShareMax - 0.5) * rise * (1 - fall);
     const lateralCp = trackCenter.clone()
       .addScaledVector(d.outward, half * (2 * outerShare - 1));
 
@@ -351,7 +401,10 @@ export class TurnModel {
      * 近づくときはゆっくり、通り過ぎたら素早く戻すので前後で非対称にしてある。 */
     const pole = this.turningPole(d.cycle);
     const gateDu = u - pole.u;
-    const sig = gateDu < 0 ? P.blockSigmaBefore : P.blockSigmaAfter;
+    /* σ を前後で切り替えると、ちょうど旗門のところで折れる（2 階微分が飛ぶ）。
+     * σ 自体を tanh でなめらかにつなぐと、窓全体が C∞ になる。 */
+    const sig = P.blockSigmaBefore
+      + (P.blockSigmaAfter - P.blockSigmaBefore) * 0.5 * (1 + Math.tanh(gateDu / 0.45));
     const gateBlock = Math.exp(-((gateDu / sig) ** 2)) * P.blockStrength;
 
     return {
@@ -361,6 +414,7 @@ export class TurnModel {
       u, phase, phaseInfo: phaseInfo(phase), cycle: d.cycle,
       pos: trackCenter, pressure, com, hip, legLen, torsoLen,
       footL, footR, outerFoot, innerFoot, outerIsRight, outerShare,
+      outerShareMax: P.outerShareMax,
       stance, innerLead, edgeAngleInner, counterSpine,
       cpOffset: foreShift,            // ブーツ中心から前へ何 m か
       comFore: foreTarget,            // 重心のブーツからの前後位置 [m]
@@ -371,7 +425,7 @@ export class TurnModel {
       normal: this.N, fallLine: this.D,
       radius: d.radius, accel: d.accel, loadBW: d.loadBW, loadNorm, uLeg: d.uLeg,
       legDir, torsoDir,
-      inclination: d.lambda, counter, angulation, kneeAng,
+      inclination: lambda, counter, angulation, kneeAng,
       phiLeg: fr.phiLeg, phiTorso: fr.phiTorso,
       edgeAngle, edgeNeeded, carving, turnAngle: d.turnAngle,
       speed: this.v, gForce: d.accel.length() / G,
