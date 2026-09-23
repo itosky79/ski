@@ -29,7 +29,7 @@ const P = (x, y, z) => [x, y, z];
 export const MUSCLES = [
   /* ---------------- 股関節まわり ---------------- */
   {
-    id: 'gluteusMax', name: '大殿筋', short: '大殿筋', color: 0xd94f4f, radius: 0.034,
+    id: 'gluteusMax', name: '大殿筋', short: '大殿筋', color: 0xd94f4f, w: 0.072, th: 0.024,
     origin: { node: 'pelvis', p: P(0.045, 0.035, -0.088) },      // 腸骨後部・仙骨
     via: [{ node: 'pelvis', p: P(0.098, -0.025, -0.060) }],
     insertion: { node: 'femur', p: P(0.030, -0.125, -0.022) },   // 殿筋粗面
@@ -37,21 +37,21 @@ export const MUSCLES = [
     note: '股関節を伸ばす・外へ回す。山回りで外脚を支える主役。',
   },
   {
-    id: 'gluteusMed', name: '中殿筋', short: '中殿筋', color: 0xff8f3f, radius: 0.026,
+    id: 'gluteusMed', name: '中殿筋', short: '中殿筋', color: 0xff8f3f, w: 0.050, th: 0.019,
     origin: { node: 'pelvis', p: P(0.092, 0.050, -0.012) },      // 腸骨外面
     insertion: { node: 'femur', p: P(0.050, -0.016, -0.004) },   // 大転子
     pull: [['hipAbduction', 1.0]],
     note: '片脚で立ったとき骨盤が落ちないよう支える。外傾を保つ要。',
   },
   {
-    id: 'adductors', name: '内転筋群', short: '内転筋', color: 0x59b0e0, radius: 0.030,
+    id: 'adductors', name: '内転筋群', short: '内転筋', color: 0x59b0e0, w: 0.044, th: 0.027,
     origin: { node: 'pelvis', p: P(0.022, -0.098, 0.030) },      // 恥骨・坐骨
     insertion: { node: 'femur', p: P(-0.012, -0.230, -0.022) },  // 粗線
     pull: [['hipAdduction', 1.0]],
     note: '脚を内へ引きつける。内スキーを引き寄せ、両脚をそろえる。',
   },
   {
-    id: 'iliopsoas', name: '腸腰筋', short: '腸腰筋', color: 0xc77dff, radius: 0.022,
+    id: 'iliopsoas', name: '腸腰筋', short: '腸腰筋', color: 0xc77dff, w: 0.029, th: 0.021,
     origin: { node: 'spineL3', p: P(0.018, 0.010, 0.004) },      // 腰椎
     via: [{ node: 'pelvis', p: P(0.048, -0.045, 0.055) }],
     insertion: { node: 'femur', p: P(-0.014, -0.060, -0.020) },  // 小転子
@@ -59,7 +59,7 @@ export const MUSCLES = [
     note: '股関節を曲げる。前に構える姿勢と、腰椎の安定を担う。',
   },
   {
-    id: 'tfl', name: '大腿筋膜張筋・腸脛靭帯', short: '腸脛靭帯', color: 0xffd166, radius: 0.015,
+    id: 'tfl', name: '大腿筋膜張筋・腸脛靭帯', short: '腸脛靭帯', color: 0xffd166, w: 0.029, th: 0.010,
     origin: { node: 'pelvis', p: P(0.112, 0.038, 0.082) },       // 上前腸骨棘
     via: [{ node: 'femur', p: P(0.046, -0.210, 0.006) }],
     insertion: { node: 'shank', p: P(0.028, -0.058, 0.012) },    // ゲルディ結節
@@ -68,7 +68,7 @@ export const MUSCLES = [
   },
   /* ---------------- 膝まわり ---------------- */
   {
-    id: 'rectusFemoris', name: '大腿直筋', short: '大腿直筋', color: 0xff5f5f, radius: 0.026,
+    id: 'rectusFemoris', name: '大腿直筋', short: '大腿直筋', color: 0xff5f5f, w: 0.037, th: 0.025,
     origin: { node: 'pelvis', p: P(0.058, -0.008, 0.068) },      // 下前腸骨棘
     via: [{ node: 'femur', p: P(0.004, -0.300, 0.038) }],
     insertion: { node: 'shank', p: P(0, -0.048, 0.026) },        // 膝蓋腱→脛骨粗面
@@ -76,7 +76,7 @@ export const MUSCLES = [
     note: '膝を伸ばし股関節を曲げる。前に構えたまま脚を支える。',
   },
   {
-    id: 'vastusLat', name: '外側広筋', short: '外側広筋', color: 0xff7a5f, radius: 0.032,
+    id: 'vastusLat', name: '外側広筋', short: '外側広筋', color: 0xff7a5f, w: 0.050, th: 0.029,
     origin: { node: 'femur', p: P(0.032, -0.095, -0.004) },
     via: [{ node: 'femur', p: P(0.024, -0.330, 0.030) }],
     insertion: { node: 'shank', p: P(0, -0.048, 0.026) },
@@ -84,7 +84,7 @@ export const MUSCLES = [
     note: '太ももの外側。ターン中いちばん働く筋のひとつ。',
   },
   {
-    id: 'vastusMed', name: '内側広筋', short: '内側広筋', color: 0xffa07a, radius: 0.026,
+    id: 'vastusMed', name: '内側広筋', short: '内側広筋', color: 0xffa07a, w: 0.039, th: 0.025,
     origin: { node: 'femur', p: P(-0.016, -0.185, 0.004) },
     via: [{ node: 'femur', p: P(-0.022, -0.360, 0.028) }],
     insertion: { node: 'shank', p: P(0, -0.048, 0.026) },
@@ -92,7 +92,7 @@ export const MUSCLES = [
     note: '太ももの内側。膝のすぐ上で膝蓋骨を安定させる。',
   },
   {
-    id: 'hamstrings', name: 'ハムストリング', short: 'ハム', color: 0x7a5fd9, radius: 0.030,
+    id: 'hamstrings', name: 'ハムストリング', short: 'ハム', color: 0x7a5fd9, w: 0.048, th: 0.027,
     origin: { node: 'pelvis', p: P(0.056, -0.148, -0.052) },     // 坐骨結節
     insertion: { node: 'shank', p: P(0.026, -0.052, -0.012) },   // 腓骨頭・脛骨内側
     pull: [['kneeFlexion', 1.0], ['hipExtension', 0.6]],
@@ -100,14 +100,14 @@ export const MUSCLES = [
   },
   /* ---------------- 足首まわり ---------------- */
   {
-    id: 'tibialisAnt', name: '前脛骨筋', short: '前脛骨筋', color: 0x4cc3ff, radius: 0.017,
+    id: 'tibialisAnt', name: '前脛骨筋', short: '前脛骨筋', color: 0x4cc3ff, w: 0.025, th: 0.016,
     origin: { node: 'shank', p: P(0.018, -0.095, 0.022) },
     insertion: { node: 'shank', p: P(0.004, -0.400, 0.034) },    // 足首前面（内側楔状骨）
     pull: [['ankleDorsi', 1.0]],
     note: 'すねの前。ブーツのベロを押し続ける筋。',
   },
   {
-    id: 'triceps', name: '下腿三頭筋', short: 'ふくらはぎ', color: 0x59d9a4, radius: 0.030,
+    id: 'triceps', name: '下腿三頭筋', short: 'ふくらはぎ', color: 0x59d9a4, w: 0.048, th: 0.027,
     origin: { node: 'femur', p: P(0.010, -0.415, -0.022) },      // 大腿骨顆（腓腹筋）
     via: [{ node: 'shank', p: P(0.002, -0.140, -0.034) }],
     insertion: { node: 'shank', p: P(0.002, -0.408, -0.040) },   // 踵骨
@@ -116,7 +116,7 @@ export const MUSCLES = [
   },
   /* ---------------- 体幹 ---------------- */
   {
-    id: 'obliques', name: '腹斜筋', short: '腹斜筋', color: 0xff6bd6, radius: 0.030,
+    id: 'obliques', name: '腹斜筋', short: '腹斜筋', color: 0xff6bd6, w: 0.046, th: 0.020,
     origin: { node: 'spineT9', p: P(0.082, 0.014, 0.062) },      // 第5〜12肋骨の外面
     via: [{ node: 'spineT12', p: P(0.112, 0.004, 0.052) }],      // 脇腹をまわり込む
     insertion: { node: 'pelvis', p: P(0.070, 0.058, 0.066) },    // 腸骨稜・鼠径靭帯
@@ -124,14 +124,14 @@ export const MUSCLES = [
     note: '体幹をひねる主役。外向はこの筋が作る。',
   },
   {
-    id: 'rectusAbd', name: '腹直筋', short: '腹直筋', color: 0xffa3d8, radius: 0.020,
+    id: 'rectusAbd', name: '腹直筋', short: '腹直筋', color: 0xffa3d8, w: 0.033, th: 0.017,
     origin: { node: 'spineT9', p: P(0.022, 0.020, 0.120) },
     insertion: { node: 'pelvis', p: P(0.018, -0.062, 0.078) },   // 恥骨
     pull: [['trunkFlexion', 1.0]],
     note: '前に曲げる・骨盤を後ろに倒す。',
   },
   {
-    id: 'erector', name: '脊柱起立筋', short: '起立筋', color: 0x9b8cff, radius: 0.026,
+    id: 'erector', name: '脊柱起立筋', short: '起立筋', color: 0x9b8cff, w: 0.033, th: 0.022,
     origin: { node: 'pelvis', p: P(0.030, 0.030, -0.080) },      // 仙骨・腸骨稜
     via: [{ node: 'spineT12', p: P(0.026, 0, -0.040) }],
     insertion: { node: 'spineT6', p: P(0.024, 0, -0.045) },
@@ -139,7 +139,7 @@ export const MUSCLES = [
     note: '背骨を立てる。前に潰れないよう支え続ける。',
   },
   {
-    id: 'quadratus', name: '腰方形筋', short: '腰方形筋', color: 0x59d9c8, radius: 0.018,
+    id: 'quadratus', name: '腰方形筋', short: '腰方形筋', color: 0x59d9c8, w: 0.027, th: 0.017,
     origin: { node: 'pelvis', p: P(0.056, 0.068, -0.028) },      // 腸骨稜
     insertion: { node: 'spineT12', p: P(0.042, 0.012, -0.018) }, // 第12肋骨・腰椎横突起
     pull: [['trunkLateral', 1.0]],
@@ -150,7 +150,7 @@ export const MUSCLES = [
 /* ============================================================
  * 帯（チューブ）の生成と更新
  * ============================================================ */
-function createStrap(material, segs = 18, radial = 7) {
+function createStrap(material, segs = 22, radial = 10) {
   const geo = new THREE.BufferGeometry();
   const count = (segs + 1) * (radial + 1);
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
@@ -170,38 +170,47 @@ function createStrap(material, segs = 18, radial = 7) {
   return mesh;
 }
 
-const _t = new THREE.Vector3(), _n = new THREE.Vector3(), _b = new THREE.Vector3();
-const _prev = new THREE.Vector3(), _p = new THREE.Vector3();
+const _t = new THREE.Vector3(), _r = new THREE.Vector3(), _w = new THREE.Vector3();
+const _p = new THREE.Vector3(), _tmp = new THREE.Vector3();
 
-/** 制御点（ワールド座標）に沿って帯の頂点を更新する */
-function updateStrap(mesh, points, radius) {
+/**
+ * 制御点（ワールド座標）に沿って筋腹の頂点を更新する。
+ *
+ * 筋は丸い紐ではなく、骨に貼りついた<b>平たい肉のかたまり</b>なので、
+ * 断面を楕円にして、薄いほうを骨の側（out）に向ける。
+ * 両端は腱になって細くなるので、紡錘形にテーパーをかける。
+ *
+ * @param {THREE.Vector3} out 骨の軸から外向きの方向（薄い側の向き）
+ */
+function updateStrap(mesh, points, halfW, halfT, out) {
   const { segs, radial } = mesh.userData;
   const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
   const pos = mesh.geometry.attributes.position;
   const nor = mesh.geometry.attributes.normal;
-  // 初期の法線：接線と平行でない適当なベクトルから
-  curve.getTangentAt(0, _t).normalize();
-  _n.set(0, 1, 0);
-  if (Math.abs(_n.dot(_t)) > 0.9) _n.set(1, 0, 0);
-  _n.crossVectors(_t, _n).normalize();
 
   let k = 0;
   for (let i = 0; i <= segs; i++) {
     const u = i / segs;
     curve.getPointAt(u, _p);
     curve.getTangentAt(u, _t).normalize();
-    // 平行移動フレーム：直前の法線を接線に直交化して持ち回る
-    _n.sub(_t.clone().multiplyScalar(_n.dot(_t))).normalize();
-    _b.crossVectors(_t, _n).normalize();
-    // 端を細く（筋腹を太く）
-    const taper = 0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, Math.max(0, u)));
-    const r = radius * taper;
+    // 薄い側の向きを接線に直交化する
+    _r.copy(out).addScaledVector(_t, -out.dot(_t));
+    if (_r.lengthSq() < 1e-8) _r.set(0, 1, 0).addScaledVector(_t, -_t.y);
+    _r.normalize();
+    _w.crossVectors(_t, _r).normalize();
+    // 紡錘形：真ん中が筋腹、両端は腱
+    const taper = 0.34 + 0.66 * Math.pow(Math.sin(Math.PI * u), 0.62);
+    const a = halfW * taper, b = halfT * taper;
     for (let j = 0; j <= radial; j++) {
       const th = (j / radial) * Math.PI * 2;
-      const nx = Math.cos(th), ny = Math.sin(th);
-      const vx = _n.x * nx + _b.x * ny, vy = _n.y * nx + _b.y * ny, vz = _n.z * nx + _b.z * ny;
-      pos.setXYZ(k, _p.x + vx * r, _p.y + vy * r, _p.z + vz * r);
-      nor.setXYZ(k, vx, vy, vz);
+      const c = Math.cos(th), sn = Math.sin(th);
+      // 楕円の外向き法線（= (c/a, s/b) を正規化した向き）
+      _tmp.copy(_w).multiplyScalar(c / a).addScaledVector(_r, sn / b).normalize();
+      pos.setXYZ(k,
+        _p.x + _w.x * a * c + _r.x * b * sn,
+        _p.y + _w.y * a * c + _r.y * b * sn,
+        _p.z + _w.z * a * c + _r.z * b * sn);
+      nor.setXYZ(k, _tmp.x, _tmp.y, _tmp.z);
       k++;
     }
   }
@@ -234,6 +243,7 @@ export function createMuscles(H, resolve) {
   }
 
   const tmp = new THREE.Vector3();
+  const _axisP = new THREE.Vector3(), _axisY = new THREE.Vector3(), _out = new THREE.Vector3();
   /** 付着部（ローカル）をワールド座標へ */
   function world(att, side) {
     const node = resolve(att.node, side);
@@ -262,7 +272,17 @@ export function createMuscles(H, resolve) {
       if (!ins) { mesh.visible = false; continue; }
       pts.push(ins);
       mesh.visible = true;
-      updateStrap(mesh, pts, def.radius * S);
+      // 「骨の軸から外向き」の方向を、起始側の骨ノードから求める。
+      // これを断面の薄いほうに向けると、筋が骨に貼りついて見える。
+      const host = resolve(def.origin.node, side);
+      const mid = pts[Math.floor(pts.length / 2)];
+      host.getWorldPosition(_axisP);
+      _axisY.set(0, 1, 0).transformDirection(host.matrixWorld).normalize();
+      _out.copy(mid).sub(_axisP);
+      _out.addScaledVector(_axisY, -_out.dot(_axisY));
+      if (_out.lengthSq() < 1e-8) _out.set(0, 0, 1);
+      _out.normalize();
+      updateStrap(mesh, pts, def.w * S, def.th * S, _out);
 
       // 活動度に応じて色を変える（休んでいる＝くすんだ色、働く＝鮮やか）
       const a = THREE.MathUtils.clamp(act[def.id + side] ?? act[def.id] ?? 0, 0, 1);

@@ -13,6 +13,7 @@ import { ANTHRO, SEGMENT_MASS, BONE_COLORS } from './constants.js';
 import { createPelvis } from './pelvis.js';
 import { createLegBones } from './leg.js';
 import { createTorso } from './torso.js';
+import { createBody, createSkinMaterial, createHeadGear } from './body.js';
 import { createMuscles, MUSCLES } from './muscles.js';
 import { computeMuscleLoad, applyMuscleActivation } from './biomech.js';
 
@@ -125,6 +126,33 @@ function makeSki(len, waist, shoulder, tail, color) {
   return ski;
 }
 
+/**
+ * スキーブーツ。箱ひとつだと「板の上に載った四角」にしか見えないので、
+ * ソール・ロアシェル・カフ（前傾したすねの筒）・バックルに分ける。
+ * ローカル軸はスキーと同じ x=横・y=上・z=前で、原点はソール下面。
+ */
+function makeBoot(shellMat, buckleMat) {
+  const g = new THREE.Group();
+  const add = (geo, mat, [x, y, z], rx = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true;
+    g.add(m); return m;
+  };
+  // ソール（ビンディングに噛む板。前後にコバが出る）
+  add(new THREE.BoxGeometry(0.104, 0.020, 0.308), shellMat, [0, 0.010, 0]);
+  // ロアシェル（足を包む部分。つま先へ向かって低く細くなる）
+  add(new THREE.BoxGeometry(0.098, 0.085, 0.250), shellMat, [0, 0.062, -0.006]);
+  add(new THREE.BoxGeometry(0.086, 0.052, 0.090), shellMat, [0, 0.042, 0.118]);
+  // カフ（すねを包む筒。前傾角ぶん傾いている）
+  add(new THREE.BoxGeometry(0.092, 0.150, 0.115), shellMat, [0, 0.168, -0.028], 0.30);
+  // バックル 4 個（外側に並ぶ）
+  for (let i = 0; i < 4; i++) {
+    const y = 0.048 + i * 0.056, z = 0.052 - i * 0.026;
+    add(new THREE.BoxGeometry(0.106, 0.014, 0.030), buckleMat, [0, y, z], i >= 2 ? 0.30 : 0);
+  }
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* スキーヤー本体                                                      */
 /* ------------------------------------------------------------------ */
@@ -153,10 +181,7 @@ export function createSkier(opts = {}) {
   const jointMat = new THREE.MeshStandardMaterial({ color: 0xc7d4e4, roughness: 0.45 });
   const outerMat = new THREE.MeshStandardMaterial({ color: BONE_COLORS.iliumOuter.hex, roughness: 0.45 });
   const innerMat = new THREE.MeshStandardMaterial({ color: BONE_COLORS.iliumInner.hex, roughness: 0.45 });
-  const skinMat = new THREE.MeshStandardMaterial({
-    color: 0x4f7ab0, roughness: 0.7, transparent: true, opacity: 0.32,
-    depthWrite: false, side: THREE.DoubleSide,
-  });
+  const skinMat = createSkinMaterial(0x7799c6, 0.36);
   const gearMat = new THREE.MeshStandardMaterial({ color: 0x27354a, roughness: 0.55 });
   const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf2f6fb, roughness: 0.3, metalness: 0.1 });
 
@@ -187,32 +212,39 @@ export function createSkier(opts = {}) {
   const ulna = { L: makeLink(boneMat, 0.014), R: makeLink(boneMat, 0.014) };
   const elbow = { L: makeBall(jointMat, 0.023), R: makeBall(jointMat, 0.023) };
   const shoulderB = { L: makeBall(jointMat, 0.028), R: makeBall(jointMat, 0.028) };
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(seg.headR, 18, 14), boneMat);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), boneMat);
+  skull.scale.set(0.072 * (H / 1.75), 0.104 * (H / 1.75), 0.090 * (H / 1.75));
   for (const s of ['L', 'R']) {
     skeleton.add(humerus[s], ulna[s], elbow[s], shoulderB[s]);
   }
   skeleton.add(skull);
 
-  /* 身体（半透明） */
-  const fleshThigh = { L: makeLink(skinMat, 0.085, 0.8), R: makeLink(skinMat, 0.085, 0.8) };
-  const fleshShank = { L: makeLink(skinMat, 0.062, 0.7), R: makeLink(skinMat, 0.062, 0.7) };
-  const fleshArm = { L: makeLink(skinMat, 0.048, 0.85), R: makeLink(skinMat, 0.048, 0.85) };
-  const fleshFore = { L: makeLink(skinMat, 0.040, 0.85), R: makeLink(skinMat, 0.040, 0.85) };
-  const abdomenMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), skinMat);
-  const chestMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), skinMat);
-  const hipMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), skinMat);
-  bodyG.add(abdomenMesh, chestMesh, hipMesh);
-  for (const s of ['L', 'R']) bodyG.add(fleshThigh[s], fleshShank[s], fleshArm[s], fleshFore[s]);
+  /* 身体（半透明）：骨盤と椎骨にぶら下げた輪切りの列として作る。
+     骨盤が回り、腰椎が曲がり、胸椎がひねれば、表面もそのとおりに変形する。 */
+  const body = createBody(H, skinMat, { pelvis: pelvisNode, verts: torso.verts });
+  bodyG.add(body.group);
 
-  /* 装備：ヘルメット・ブーツ・スキー・ストック */
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(seg.headR * 1.22, 20, 16), helmetMat);
-  helmet.scale.set(1, 1.05, 1.12);
-  gearG.add(helmet);
+  /* 装備：ヘルメット・ゴーグル・ブーツ・スキー・ストック */
+  const faceMat = new THREE.MeshStandardMaterial({ color: 0xe8c9a8, roughness: 0.75 });
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x1b2942, roughness: 0.18, metalness: 0.55, emissive: 0x0a1526 });
+  const strapMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.8 });
+  const head = createHeadGear(H, { skin: faceMat, helmet: helmetMat, lens: lensMat, strap: strapMat });
+  head.setChinGuard(disc.key === 'SL');   // SL はチンガード付きヘルメット
+  gearG.add(head.group);
 
-  const boots = {
-    L: new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.21, 0.30), gearMat),
-    R: new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.21, 0.30), gearMat),
-  };
+  /* グローブ */
+  const gloveMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.7 });
+  const gloves = { L: new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), gloveMat),
+                   R: new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), gloveMat) };
+  for (const k of ['L', 'R']) {
+    gloves[k].scale.set(0.038, 0.042, 0.062);
+    gloves[k].castShadow = true;
+    gearG.add(gloves[k]);
+  }
+
+  const buckleMat = new THREE.MeshStandardMaterial({ color: 0xc9d4e2, roughness: 0.35, metalness: 0.5 });
+  const boots = { L: makeBoot(gearMat, buckleMat), R: makeBoot(gearMat, buckleMat) };
   const skis = {
     L: makeSki(disc.skiLength, disc.skiWaist, disc.skiShoulder, disc.skiTail, 0x1e6bd6),
     R: makeSki(disc.skiLength, disc.skiWaist, disc.skiShoulder, disc.skiTail, 0x1e6bd6),
@@ -319,7 +351,7 @@ export function createSkier(opts = {}) {
       ski.userData.mat.color.set(isOuter ? 0xff6b57 : 0x2f7fe0);
       ski.userData.mat.emissive.set(isOuter ? 0x3a0f08 : 0x03101f);
 
-      boots[side].position.copy(center).addScaledVector(skiNormal, 0.125);
+      boots[side].position.copy(center).addScaledVector(skiNormal, 0.030);
       boots[side].quaternion.copy(ski.quaternion);
     }
     const skiNormal = skiNormalOuter;
@@ -334,8 +366,6 @@ export function createSkier(opts = {}) {
       const kp = solveIK(hips[side], ankles[side], seg.thigh, seg.shank, kneeHint);
       kneePos[side].copy(kp);
       legBasis[side] = legs[side].update(hips[side], kp, ankles[side], kneeHint);
-      fleshThigh[side].userData.set(hips[side], kp);
-      fleshShank[side].userData.set(kp, ankles[side]);
       state.angles[`knee${side}`] = Math.PI - angleBetween(
         hips[side].clone().sub(kp), ankles[side].clone().sub(kp));
     }
@@ -374,19 +404,6 @@ export function createSkier(opts = {}) {
     const chestLeft = new THREE.Vector3(1, 0, 0).applyQuaternion(chestQuat).normalize();
     const chestRight = chestLeft.clone().negate();
 
-    /* 身体シェル（腹部と胸部） */
-    const setShell = (mesh, a, b, rx, rz) => {
-      const d = b.clone().sub(a);
-      mesh.position.copy(a).addScaledVector(d, 0.5);
-      mesh.scale.set(rx, d.length() * 0.62, rz);
-      mesh.quaternion.setFromUnitVectors(V(0, 1, 0), d.clone().normalize());
-    };
-    setShell(abdomenMesh, pelvisPos, midThorax, seg.shoulderW * 0.36, seg.shoulderW * 0.30);
-    setShell(chestMesh, midThorax, chestPos, seg.shoulderW * 0.44, seg.shoulderW * 0.32);
-    hipMesh.position.copy(pelvisPos);
-    hipMesh.scale.set(0.17, 0.13, 0.15);
-    hipMesh.quaternion.copy(pelvisNode.quaternion);
-
     /* --- 肩・腕・ストック --- */
     const shoulderR = new THREE.Vector3(), shoulderL = new THREE.Vector3();
     torso.shoulders.R.getWorldPosition(shoulderR);
@@ -394,6 +411,7 @@ export function createSkier(opts = {}) {
     shoulderB.R.position.copy(shoulderR); shoulderB.L.position.copy(shoulderL);
 
     const shoulders = { L: shoulderL, R: shoulderR };
+    const elbows = {}, hands = {};
     for (const side of ['L', 'R']) {
       const sgn = side === 'R' ? 1 : -1;
       const isOuter = (side === 'R') === outwardIsRight;
@@ -408,8 +426,7 @@ export function createSkier(opts = {}) {
       elbow[side].position.copy(el);
       humerus[side].userData.set(shoulders[side], el);
       ulna[side].userData.set(el, hand);
-      fleshArm[side].userData.set(shoulders[side], el);
-      fleshFore[side].userData.set(el, hand);
+      elbows[side] = el; hands[side] = hand;
       // ストック：手から後方斜め下へ
       const tip = hand.clone()
         .addScaledVector(s.tangent, -1.00)
@@ -418,19 +435,36 @@ export function createSkier(opts = {}) {
       poles[side].userData.shaft.userData.set(hand, tip);
     }
 
+    /* --- 身体の表面 ---
+     * 胴体は骨（骨盤・椎骨）の matrixWorld から輪切りを並べ直す。
+     * 四肢は関節の 2 点から。 */
+    root.updateMatrixWorld(true);
+    body.update({
+      hips, knees: { L: kneePos.L, R: kneePos.R }, ankles,
+      legAnt: { L: legBasis.L.Z, R: legBasis.R.Z },
+      shoulders, elbows, hands, armAnt: chestFwd,
+    }, root.position);
+
     /* --- 頭：頸椎の上にのせ、次の旗門を見る --- */
     const headPos = new THREE.Vector3();
     torso.headMount.getWorldPosition(headPos);
     headPos.addScaledVector(chestUp, seg.headR * 0.85);
     skull.position.copy(headPos);
-    helmet.position.copy(headPos);
+    head.group.position.copy(headPos);
     const lookDir = (cfg.lookTarget ? cfg.lookTarget.clone().sub(headPos) : s.tangent.clone()).normalize();
     // 頭は身体ほど傾けない（実際のスキーヤーも視線の水平を保つ）
     const headUp = s.normal.clone().lerp(chestUp, 0.3).normalize();
     const headRight = new THREE.Vector3().crossVectors(lookDir, headUp).normalize();
     const headFwd = new THREE.Vector3().crossVectors(headUp, headRight).normalize();
-    helmet.quaternion.setFromRotationMatrix(
+    head.group.quaternion.setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(headRight.clone().negate(), headUp, headFwd));
+
+    /* グローブ：手の位置に、前腕の向きで置く */
+    for (const side of ['L', 'R']) {
+      const dir = hands[side].clone().sub(elbows[side]).normalize();
+      gloves[side].position.copy(hands[side]).addScaledVector(dir, 0.026);
+      gloves[side].quaternion.setFromUnitVectors(V(0, 0, 1), dir);
+    }
 
     /* --- 重心：Dempster の質量比で実際の重心を求め、力学的な重心に合わせる --- */
     const actual = computeCoM({ hips, knees: { L: kneePos.L, R: kneePos.R },
@@ -457,8 +491,9 @@ export function createSkier(opts = {}) {
       outerAnkle: (outwardIsRight ? ankles.R : ankles.L).clone().add(off),
       chest: chestPos.clone().add(off),
       asisMid: pelvisPos.clone().addScaledVector(fwd, 0.10).add(off),
-      eye: headPos.clone().addScaledVector(headFwd, seg.headR * 0.85)
-        .addScaledVector(headUp, seg.headR * 0.25).add(off),
+      // ゴーグルとチンガードの外に出す（中に入ると視界が塞がる）
+      eye: headPos.clone().addScaledVector(headFwd, seg.headR * 1.30)
+        .addScaledVector(headUp, seg.headR * 0.20).add(off),
       eyeDir: headFwd.clone(),
       eyeUp: headUp.clone(),
       pelvisFwd: fwd.clone(),

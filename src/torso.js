@@ -77,6 +77,47 @@ const SHARE = {
 const THORAX_W = [0.070, 0.086, 0.100, 0.114, 0.126, 0.134, 0.140, 0.140, 0.133, 0.120, 0.100, 0.080];
 const THORAX_A = [0.070, 0.086, 0.100, 0.112, 0.124, 0.134, 0.140, 0.140, 0.132, 0.118, 0.086, 0.060];
 
+/**
+ * 断面が楕円のチューブ。肋骨は丸い棒ではなく<b>平たい板</b>なので、
+ * 厚みの薄いほうを胸郭の外向きに合わせる。
+ * @param {THREE.Curve} curve 中心線
+ * @param {number} hUp  上下方向の半径（肋骨の「高さ」）
+ * @param {number} hOut 外向きの半径（肋骨の「厚み」）
+ */
+function flatTube(curve, segs, hUp, hOut, radial = 8) {
+  const pos = [], idx = [];
+  const T = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3();
+  const P = new THREE.Vector3();
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    curve.getPointAt(u, P);
+    curve.getTangentAt(u, T).normalize();
+    // 脊柱の軸（x=0,z=0 の縦線）から見た外向き
+    R.set(P.x, 0, P.z);
+    if (R.lengthSq() < 1e-8) R.set(0, 0, -1);
+    R.addScaledVector(T, -R.dot(T)).normalize();
+    U.crossVectors(T, R).normalize();
+    // 前端（胸骨側）は細くする
+    const taper = 0.72 + 0.28 * Math.sin(Math.PI * Math.min(1, u * 1.15));
+    for (let j = 0; j <= radial; j++) {
+      const th = (j / radial) * Math.PI * 2;
+      const c = Math.cos(th) * hUp * taper, sn = Math.sin(th) * hOut * taper;
+      pos.push(P.x + U.x * c + R.x * sn, P.y + U.y * c + R.y * sn, P.z + U.z * c + R.z * sn);
+    }
+  }
+  for (let i = 0; i < segs; i++) {
+    for (let j = 0; j < radial; j++) {
+      const a = i * (radial + 1) + j, b = a + radial + 1;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function ribCurve(i, side, S) {
   const w = THORAX_W[i] * S, a = THORAX_A[i] * S;
   const floating = i >= 10;
@@ -143,8 +184,9 @@ export function createTorso(H, boneMat, discMat) {
   for (let k = 0; k < T; k++) {
     const level = T - 1 - k;                         // thoracic[k] は T(12-k)
     const vg = thoracic[k];
+    // 肋骨の断面：高さ 約 12 mm × 厚み 約 5 mm（実際の肋骨と同じく平たい板）
     const pair = [1, -1].map((side) => ({
-      geo: new THREE.TubeGeometry(ribCurve(level, side, S), 22, 0.0052 * S, 8, false),
+      geo: flatTube(ribCurve(level, side, S), 26, 0.0062 * S, 0.0026 * S),
     }));
     const rib = new THREE.Mesh(mergeGeos(pair), boneMat);
     vg.add(rib);
@@ -221,22 +263,42 @@ export function createTorso(H, boneMat, discMat) {
   };
 }
 
-/** 肩甲骨（三角形の板＋肩峰＋烏口突起） */
+/**
+ * 肩甲骨。平らな板ではなく<b>胸郭に沿って湾曲した三角形の骨</b>なので、
+ * 外側ほど前へ回り込ませる（z を x² に比例して前に出す）。
+ * 肩甲棘（背中側に出っ張る稜線）と肩峰も付ける。これがないと凧にしか見えない。
+ * 実測の目安：内外径 約 10 cm、上下径 約 14 cm、上角が T2・下角が T7 の高さ。
+ */
 function shoulderBlade(S, side) {
   const shape = new THREE.Shape();
-  shape.moveTo(0.012, 0.034);          // 上角
-  shape.lineTo(0.110, 0.026);          // 肩峰側
-  shape.lineTo(0.100, -0.022);         // 関節窩の下
-  shape.lineTo(0.024, -0.098);         // 下角
-  shape.lineTo(0.005, -0.012);         // 内側縁
+  shape.moveTo(0.016, 0.036);          // 上角
+  shape.quadraticCurveTo(0.070, 0.036, 0.100, 0.020);   // 上縁 → 肩峰側
+  shape.quadraticCurveTo(0.104, -0.010, 0.086, -0.036); // 外側縁（関節窩の下）
+  shape.quadraticCurveTo(0.052, -0.092, 0.028, -0.104); // 下角へ
+  shape.quadraticCurveTo(0.012, -0.070, 0.010, -0.014); // 内側縁（脊柱側）
   shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.006, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1,
+  const blade = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.0045, curveSegments: 6,
+    bevelEnabled: true, bevelThickness: 0.0016, bevelSize: 0.0016, bevelSegments: 1,
   });
+  // 肩甲棘：上のほうを横切る稜線（背中側へ出っ張る）
+  const spine = new THREE.BoxGeometry(0.088, 0.012, 0.014);
+  spine.translate(0.056, 0.012, -0.010);
+  // 肩峰：肩の上をおおう出っ張り
+  const acro = new THREE.BoxGeometry(0.030, 0.011, 0.020);
+  acro.translate(0.103, 0.019, -0.006);
+  const geo = mergeGeos([{ geo: blade }, { geo: spine }, { geo: acro }]);
+
   // 形状 (x=外, y=上, 厚み=前後) → ワールド：x=左右, y=上, z=前
   geo.scale(side * S, S, S);
-  geo.translate(0, 0.010 * S, -0.055 * S);
-  // 胸郭に沿うよう少し傾ける
-  geo.rotateY(side * 0.35);
+  // 胸郭に巻きつける：外側ほど前へ
+  const K = 2.6 / S;
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    pos.setZ(i, pos.getZ(i) + K * x * x);
+  }
+  geo.computeVertexNormals();
+  geo.translate(0, 0.012 * S, -0.048 * S);
   return geo;
 }

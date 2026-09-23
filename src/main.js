@@ -29,6 +29,8 @@ const app = {
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -52,9 +54,9 @@ scene.add(camera);
 }
 
 /* 光源 */
-const hemi = new THREE.HemisphereLight(0xdcefff, 0xb9c9d8, 1.5);
+const hemi = new THREE.HemisphereLight(0xdcefff, 0xb9c9d8, 2.0);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff6e8, 2.2);
+const sun = new THREE.DirectionalLight(0xfff6e8, 2.9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
@@ -62,6 +64,10 @@ sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
 sun.shadow.camera.top = 8; sun.shadow.camera.bottom = -8;
 sun.shadow.bias = -0.0012;
 scene.add(sun, sun.target);
+// 逆光側の弱い補助光。輪郭が黒く潰れないように
+const fill = new THREE.DirectionalLight(0xd6e6ff, 0.65);
+fill.position.set(-5, 4, -7);
+scene.add(fill);
 
 /* ---------- モデル ---------- */
 let disc = DISCIPLINES[app.discipline];
