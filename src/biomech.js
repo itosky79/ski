@@ -24,7 +24,11 @@
  */
 import * as THREE from 'three';
 
-const REF = { hip: 3.0, knee: 3.0, ankle: 1.5, trunk: 2.0 };   // N·m/kg
+const REF = { hip: 3.0, knee: 3.0, ankle: 1.5, trunk: 2.0,
+             shoulder: 0.60, elbow: 0.35 };                    // N·m/kg
+/* 上肢の質量比（片側）。上腕 0.028 ＋ 前腕と手 0.022 [Dempster 1955] */
+const ARM_MASS = 0.028 + 0.022;
+const FOREARM_MASS = 0.022;
 /* 足関節まわりのモーメントは、その多くをブーツのシェルが受け持つ。
    筋が負担するのは残りだけなので、この割合を掛ける。 */
 const BOOT_SHARE = 0.55;
@@ -40,6 +44,8 @@ export function computeMuscleLoad(s, j, mass) {
   const demand = {};                 // 例: demand.R.kneeExtension
   const out = {};                    // 筋 id + 側 → 活動度
   const moments = {};
+  // 慣性力の向き（重力を含む）。上体・腕の負担はこれで決まる
+  const aMinusG = s.accel.clone().sub(new THREE.Vector3(0, -9.80665, 0));
 
   for (const side of ['L', 'R']) {
     const isOuter = side === j.outerSide;
@@ -96,14 +102,31 @@ export function computeMuscleLoad(s, j, mass) {
       clamp01((ang.knee ?? 0) / rad(90)) * ld * 0.5);
     d.ankleDorsi = Math.max(d.ankleDorsi, clamp01((ang.shin ?? 0) / rad(35)) * ld * 0.5);
 
+    /* --- 肩・肘 ---
+     * 腕は何も持ち上げていなくても、前に構えているだけで
+     * 肩まわりにモーメントを作る。その腕自身の慣性力から求める。 */
+    if (j.shoulders && j.elbows && j.hands) {
+      const sh = j.shoulders[side], el = j.elbows[side], hd = j.hands[side];
+      const Farm = aMinusG.clone().multiplyScalar(mass * ARM_MASS);
+      const comArm = sh.clone().lerp(hd, 0.45);          // 腕全体の重心の目安
+      const Msh = new THREE.Vector3().subVectors(comArm, sh).cross(Farm);
+      d.armHold = clamp01(Msh.length() / (REF.shoulder * mass));
+      const Ffore = aMinusG.clone().multiplyScalar(mass * FOREARM_MASS);
+      const comFore = el.clone().lerp(hd, 0.45);
+      const Mel = new THREE.Vector3().subVectors(comFore, el).cross(Ffore);
+      // 肘は曲げた形を保っているので、担うのは屈筋。
+      // 伸筋はストックを押すぶんだけ（同時収縮の目安として 3 割）働く。
+      d.elbowFlexion = clamp01(Mel.length() / (REF.elbow * mass));
+      d.elbowExtension = d.elbowFlexion * 0.30;
+    }
+
     demand[side] = d;
     moments[side] = { hip: Mh.length(), knee: Mk.length(), ankle: Ma.length() };
   }
 
   /* --- 体幹（L5/S1 まわり） --- */
-  const aMinusG = s.accel.clone().sub(new THREE.Vector3(0, -9.80665, 0));
   const upMass = mass * 0.678;                        // 体幹＋頭＋両腕
-  const Fup = aMinusG.multiplyScalar(upMass);         // 上半身に働く合力
+  const Fup = aMinusG.clone().multiplyScalar(upMass); // 上半身に働く合力
   const Mt = new THREE.Vector3().subVectors(j.comUpper, j.l5s1).cross(Fup);
   const tFlex = Mt.dot(j.pelvisLeft);                 // + なら前へ倒す向き
   const tLat = Mt.dot(j.pelvisFwd);                   // 横に倒す向き

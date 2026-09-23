@@ -365,6 +365,85 @@ function helmetShell(rx, ry, rz, seg = 40, rows = 14) {
 }
 
 /**
+ * ゴーグルの縁（方位角 a における上端・下端の高さ）。
+ * 横へ行くほど細くなり、真ん中は鼻を避けて下端が持ち上がる。
+ */
+function goggleEdge(a, A, p) {
+  const t = a / A;
+  const yTop = p.yc + p.hT * (1 - 0.34 * t * t);
+  const yBot = p.yc - p.hB * (1 - 0.10 * t * t) + p.nose * Math.exp(-((a / 0.42) ** 2));
+  return [yTop, yBot];
+}
+
+/** 頭の楕円体に貼りつくレンズの曲面 */
+function goggleLens(R, A, p, seg = 48, rows = 6) {
+  const pos = [], idx = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = -A + 2 * A * (i / seg);
+    const [yT, yB] = goggleEdge(a, A, p);
+    for (let j = 0; j <= rows; j++) {
+      const y = yT + (yB - yT) * (j / rows);
+      const k = Math.sqrt(Math.max(0, 1 - (y / R.y) ** 2));
+      pos.push(R.x * k * Math.sin(a), y, R.z * k * Math.cos(a));
+    }
+  }
+  for (let i = 0; i < seg; i++) {
+    for (let j = 0; j < rows; j++) {
+      const b = i * (rows + 1) + j, c = b + rows + 1;
+      idx.push(b, c, b + 1, b + 1, c, c + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** レンズの縁をなぞる閉じた線（フレームのスイープに使う） */
+function goggleOutline(R, A, p, grow = 1.0, seg = 30) {
+  const pts = [];
+  const at = (a, y) => {
+    const k = Math.sqrt(Math.max(0, 1 - (y / R.y) ** 2));
+    return new THREE.Vector3(R.x * grow * k * Math.sin(a), y, R.z * grow * k * Math.cos(a));
+  };
+  for (let i = 0; i <= seg; i++) {            // 上の縁：左 → 右
+    const a = -A + 2 * A * (i / seg);
+    pts.push(at(a, goggleEdge(a, A, p)[0]));
+  }
+  for (let i = seg; i >= 0; i--) {            // 下の縁：右 → 左
+    const a = -A + 2 * A * (i / seg);
+    pts.push(at(a, goggleEdge(a, A, p)[1]));
+  }
+  return pts;
+}
+
+/**
+ * ゴーグルのストラップ。実物は後頭部に回っていて、前から見えるのは
+ * こめかみのところだけなので、レンズが占める範囲（±A）には作らない。
+ */
+function strapBand(rxx, rzz, h, A, seg = 44) {
+  const pos = [], idx = [];
+  const a0 = A - 0.10, a1 = Math.PI * 2 - A + 0.10;
+  for (let i = 0; i <= seg; i++) {
+    const a = a0 + (a1 - a0) * (i / seg);
+    const x = rxx * Math.sin(a), z = rzz * Math.cos(a);
+    // 後頭部で少し太くする（実物と同じく後ろが幅広）
+    const hh = h * (1 + 0.30 * Math.max(0, -Math.cos(a)));
+    pos.push(x, hh * 0.5, z, x, -hh * 0.5, z);
+  }
+  for (let i = 0; i < seg; i++) {
+    const a = i * 2, b = a + 2;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
  * 頭（顔＋ヘルメット＋ゴーグル）。
  * ローカル座標は +x 左・+y 上・+z 前、原点は頭の中心（耳の高さ）。
  */
@@ -389,27 +468,24 @@ export function createHeadGear(H, mats) {
   helmet.material.side = THREE.DoubleSide;
   g.add(helmet);
 
-  // ゴーグル：顔の前を横切る帯（トーラスを縦につぶして眼鏡らしく見せる）
-  const arc = 2.7;
-  const lens = new THREE.Mesh(
-    new THREE.TorusGeometry(rx * 0.98, 0.027 * S, 10, 40, arc), mats.lens);
-  lens.rotation.set(Math.PI / 2, 0, -arc / 2 + Math.PI / 2);
-  lens.scale.set(1, 1, 0.62);
-  lens.position.set(0, -ry * 0.02, rz * 0.02);
+  // ゴーグル：レンズ・フレーム・ストラップを別々に作る
+  //   レンズは頭の楕円体に貼りつく曲面。縁は横で低く、鼻のところで持ち上がる。
+  const gg = { yc: -0.002 * S, hT: 0.038 * S, hB: 0.034 * S, nose: 0.014 * S };
+  const RL = { x: rx * 1.05, y: ry * 1.06, z: rz * 1.07 };
+  const A = 1.30;                                   // 左右への回り込み（±74°）
+  const lens = new THREE.Mesh(goggleLens(RL, A, gg), mats.lens);
+  lens.position.set(0, ry * 0.02, 0.002 * S);
   g.add(lens);
-  // ゴーグルのフレーム（レンズの外周を少しだけ大きく）
-  const frame = new THREE.Mesh(
-    new THREE.TorusGeometry(rx * 0.98, 0.031 * S, 8, 34, arc * 0.99), mats.strap);
-  frame.rotation.copy(lens.rotation);
-  frame.scale.set(0.985, 0.985, 0.60);
+  // フレーム：レンズの縁をぐるりと囲む細い枠
+  const frame = new THREE.Mesh(new THREE.TubeGeometry(
+    new THREE.CatmullRomCurve3(goggleOutline(RL, A, gg, 1.015), true, 'catmullrom', 0.5),
+    76, 0.0052 * S, 7, true), mats.frame);
   frame.position.copy(lens.position);
   g.add(frame);
-  // ストラップ（後頭部に回る細い帯）
+  // ストラップ：こめかみから後頭部へ回るバンド
   const strap = new THREE.Mesh(
-    new THREE.TorusGeometry(rx * 1.13, 0.013 * S, 8, 32, Math.PI * 2), mats.strap);
-  strap.rotation.x = Math.PI / 2;
-  strap.scale.set(1, 1, 1.16);
-  strap.position.set(0, ry * 0.10, -0.006 * S);
+    strapBand(rx * 1.17, rz * 1.17, 0.030 * S, A), mats.strap);
+  strap.position.set(0, ry * 0.05, -0.004 * S);
   g.add(strap);
 
   // チンガード（SL 用ヘルメットの顎バー）。SL のときだけ出す

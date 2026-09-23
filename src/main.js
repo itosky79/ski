@@ -9,6 +9,7 @@ import { Course } from './course.js';
 import { ForceView, AngleGuides } from './forces.js';
 import { CameraRig } from './views.js';
 import { UI, LabelLayer } from './ui.js';
+import { MotionGuide } from './motion.js';
 
 const deg = (r) => r * 180 / Math.PI;
 
@@ -22,7 +23,7 @@ const app = {
   u: 0,
   gateCount: 9,
   show: { forces: true, body: true, skeleton: true, pelvis: true, angles: true,
-          track: true, gates: true, muscles: false, ghost: false },
+          track: true, gates: true, moves: true, muscles: false, ghost: false },
 };
 
 /* ---------- 3D 基本セット ---------- */
@@ -41,6 +42,8 @@ const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 900);
 scene.add(camera);
 
 /* 空（グラデーション） */
+let skyMesh;
+let envMap = null;
 {
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(500, 32, 16),
@@ -51,6 +54,23 @@ scene.add(camera);
       fragmentShader: 'varying float h; uniform vec3 top; uniform vec3 bottom; void main(){ gl_FragColor = vec4(mix(bottom, top, smoothstep(-0.1,0.65,h)), 1.0); }',
     }));
   scene.add(sky);
+  skyMesh = sky;
+}
+
+/* 環境マップ：空と雪面から作る。これがないと金属（ゴーグルのレンズ・
+   ブーツのバックル・エッジ）が真っ黒になり、プラスチックにしか見えない。 */
+{
+  const envScene = new THREE.Scene();
+  envScene.add(skyMesh.clone());
+  const ground = new THREE.Mesh(
+    new THREE.SphereGeometry(400, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xeef4fb, side: THREE.BackSide }));
+  envScene.add(ground);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  // scene.environment にすると全マテリアルが IBL を引いて重くなるので、
+  // 金属（ゴーグルのレンズ・バックル）にだけ個別に渡す。
+  envMap = pmrem.fromScene(envScene, 0.02).texture;
+  pmrem.dispose();
 }
 
 /* 光源 */
@@ -99,15 +119,16 @@ function makeModel(d, ghost = false) {
 }
 
 const course = new Course(scene);
-let skier = createSkier({ height: ANTHRO.height, discipline: disc });
+let skier = createSkier({ height: ANTHRO.height, discipline: disc, env: envMap });
 scene.add(skier.root);
-let ghost = createSkier({ height: ANTHRO.height, discipline: disc });
+let ghost = createSkier({ height: ANTHRO.height, discipline: disc, env: envMap });
 ghost.setGhost(true);
 ghost.root.visible = false;
 scene.add(ghost.root);
 
 const forceView = new ForceView(scene, ANTHRO.mass);
 const guides = new AngleGuides(scene);
+const motion = new MotionGuide(scene);
 const camRig = new CameraRig(canvas, camera);
 const labels = new LabelLayer(document.getElementById('labels'));
 
@@ -123,6 +144,7 @@ const ui = new UI({
     skier.setFocusPelvis(pv);
     skier.setVisible({ com: !pv });
     guides.setScale(pv ? 0.42 : 1);
+    motion.setVisible(app.show.moves && !pv);
     guides.setPelvisMode(pv);
     forceView.setVisible(!pv && app.show.forces);
     labels.clearAll();
@@ -132,6 +154,7 @@ const ui = new UI({
     skier.setFocusPelvis(false);
     skier.setVisible({ com: true });
     guides.setScale(1); guides.setPelvisMode(false);
+    motion.setVisible(app.show.moves);
     forceView.setVisible(app.show.forces);
   },
   onLevel(l) { app.level = l; rebuild(false); },
@@ -166,6 +189,7 @@ function applyVisibility() {
   forceView.setVisible(app.show.forces && app.view !== 'pelvis');
   guides.setVisible(app.show.angles);
   skier.setMusclesVisible(app.show.muscles);
+  motion.setVisible(app.show.moves && app.view !== 'pelvis');
   course.setVisible({ tracks: app.show.track, gates: app.show.gates });
   ghost.root.visible = app.show.ghost;
   labels.clearAll();
@@ -183,8 +207,8 @@ function rebuild(resetPosition) {
   ghostModel = makeModel(disc, true);
   // スキーヤーを作り直す（板の長さが種目で変わるため）
   scene.remove(skier.root); scene.remove(ghost.root);
-  skier = createSkier({ height: ANTHRO.height, discipline: disc });
-  ghost = createSkier({ height: ANTHRO.height, discipline: disc });
+  skier = createSkier({ height: ANTHRO.height, discipline: disc, env: envMap });
+  ghost = createSkier({ height: ANTHRO.height, discipline: disc, env: envMap });
   ghost.setGhost(true);
   scene.add(skier.root, ghost.root);
   enableShadows(skier.root);
@@ -257,6 +281,14 @@ function updateLabels(s) {
   const pelvisView = camRig.mode === 'pelvis';
   const close = pelvisView || camRig.dist < 4;
   const narrow = size.w < 820;
+
+  // 動作ガイド：矢印の先に「何をするか」を出す（これが主役なので常に出す）
+  if (app.show.moves && !pelvisView && camRig.mode !== 'first') {
+    motion.active.forEach((m, i) => {
+      if (narrow && i > 0) return;
+      labels.set('do_' + i, (i === 0 ? '▶ ' : '') + m.text, m.anchor, i === 0 ? 'do' : 'do small');
+    });
+  }
 
   if (pelvisView) {
     // 骨盤クローズアップ：骨の名前と、骨盤まわりの角度だけ
@@ -368,8 +400,12 @@ function tick() {
   }
   forceView.update(s);
   guides.update(s, skier);
+  // 動作ガイド：少し先の姿勢との差＝「いま何をしているか」
+  const dPhase = 0.055;
+  motion.update(s, model.sample(app.u + model.halfCycle * dPhase), dPhase, skier.state);
   ui.update(s, { hipLead: skier.state.angles.hipLead ?? 0 });
   ui.updateMuscles(skier.state.muscleAct, skier.state.outerSide, app.show.muscles);
+  ui.updateDoing(motion.active, app.show.moves);
   ui.updateMotions(pelvisMotions(s));
   ui.updateMotions(hipMotions(), 'hip');
   updateLabels(s);

@@ -226,10 +226,16 @@ export function createSkier(opts = {}) {
 
   /* 装備：ヘルメット・ゴーグル・ブーツ・スキー・ストック */
   const faceMat = new THREE.MeshStandardMaterial({ color: 0xe8c9a8, roughness: 0.75 });
+  // レンズはミラー。金属度を上げて空を映す
   const lensMat = new THREE.MeshStandardMaterial({
-    color: 0x1b2942, roughness: 0.18, metalness: 0.55, emissive: 0x0a1526 });
-  const strapMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.8 });
-  const head = createHeadGear(H, { skin: faceMat, helmet: helmetMat, lens: lensMat, strap: strapMat });
+    color: 0x2a3d5c, roughness: 0.10, metalness: 0.92,
+    emissive: 0x0d1a2e, side: THREE.DoubleSide,
+    envMap: opts.env ?? null, envMapIntensity: 1.15 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf24b3d, roughness: 0.45 });
+  const strapMat = new THREE.MeshStandardMaterial({
+    color: 0xf24b3d, roughness: 0.75, side: THREE.DoubleSide });
+  const head = createHeadGear(H, { skin: faceMat, helmet: helmetMat,
+    lens: lensMat, frame: frameMat, strap: strapMat });
   head.setChinGuard(disc.key === 'SL');   // SL はチンガード付きヘルメット
   gearG.add(head.group);
 
@@ -243,7 +249,9 @@ export function createSkier(opts = {}) {
     gearG.add(gloves[k]);
   }
 
-  const buckleMat = new THREE.MeshStandardMaterial({ color: 0xc9d4e2, roughness: 0.35, metalness: 0.5 });
+  const buckleMat = new THREE.MeshStandardMaterial({
+    color: 0xc9d4e2, roughness: 0.32, metalness: 0.6,
+    envMap: opts.env ?? null, envMapIntensity: 0.9 });
   const boots = { L: makeBoot(gearMat, buckleMat), R: makeBoot(gearMat, buckleMat) };
   const skis = {
     L: makeSki(disc.skiLength, disc.skiWaist, disc.skiShoulder, disc.skiTail, 0x1e6bd6),
@@ -260,6 +268,12 @@ export function createSkier(opts = {}) {
     gearG.add(boots[s], skis[s], poles[s]);
   }
 
+  /* 上肢の骨のノード（筋の付着部を引くための座標系）。
+     ローカル軸は下肢と同じ x=左・y=骨の軸（近位向き）・z=前。 */
+  const armNode = { L: { upper: new THREE.Object3D(), fore: new THREE.Object3D() },
+                    R: { upper: new THREE.Object3D(), fore: new THREE.Object3D() } };
+  for (const sd of ['L', 'R']) skeleton.add(armNode[sd].upper, armNode[sd].fore);
+
   /* 筋（骨のノードを名前で引けるようにして渡す） */
   const muscleGroup = new THREE.Group();
   muscleGroup.name = 'muscleLayer';
@@ -268,8 +282,12 @@ export function createSkier(opts = {}) {
     if (name === 'pelvis') return pelvisNode;
     if (name === 'femur') return legs[side].femur;
     if (name === 'shank') return legs[side].shank;
+    if (name === 'shoulder') return torso.shoulders[side];
+    if (name === 'humerus') return armNode[side].upper;
+    if (name === 'forearm') return armNode[side].fore;
     if (name.startsWith('spine')) {
-      const map = { spineL3: 2, spineT12: 5, spineT10: 7, spineT9: 8, spineT8: 9, spineT6: 11 };
+      const map = { spineL3: 2, spineT12: 5, spineT10: 7, spineT9: 8, spineT8: 9,
+                    spineT6: 11, spineT4: 13, spineT2: 15, spineT1: 16 };
       return torso.verts[map[name] ?? 5];
     }
     return null;
@@ -427,6 +445,18 @@ export function createSkier(opts = {}) {
       humerus[side].userData.set(shoulders[side], el);
       ulna[side].userData.set(el, hand);
       elbows[side] = el; hands[side] = hand;
+      // 筋の付着用ノード（x=左・y=骨の軸・z=前）
+      const setArm = (node, from, to) => {
+        const Y = from.clone().sub(to).normalize();
+        let Z = chestFwd.clone().addScaledVector(Y, -chestFwd.dot(Y));
+        if (Z.lengthSq() < 1e-8) Z = new THREE.Vector3(0, 0, 1);
+        Z.normalize();
+        const X = new THREE.Vector3().crossVectors(Y, Z).normalize();
+        node.position.copy(from);
+        node.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+      };
+      setArm(armNode[side].upper, shoulders[side], el);
+      setArm(armNode[side].fore, el, hand);
       // ストック：手から後方斜め下へ
       const tip = hand.clone()
         .addScaledVector(s.tangent, -1.00)
@@ -550,6 +580,7 @@ export function createSkier(opts = {}) {
         cpOuter, cpInner, outerSide, outerIsRight: outwardIsRight,
         pelvisLeft: left, pelvisFwd: fwd, pelvisUp,
         l5s1: sacralTop, comUpper,
+        shoulders, elbows, hands,
       };
       const load = computeMuscleLoad(s, joints, opts.mass ?? ANTHRO.mass);
       state.muscleLoad = load;

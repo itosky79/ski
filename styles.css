@@ -41,6 +41,10 @@ body{
   transition:opacity .15s linear;
 }
 .lbl.small{font-size:10px;padding:1px 6px;font-weight:600}
+/* 動作ガイドのラベル（何をするか）。いちばん読ませたいので強く出す */
+.lbl.do{background:#ffc93c;color:#20160a;font-weight:800;font-size:12.5px;
+  border:1px solid rgba(0,0,0,.18);box-shadow:0 2px 10px rgba(0,0,0,.35)}
+.lbl.do.small{background:#ff9f1c;color:#1d1204;font-size:11px;font-weight:700}
 .lbl.hide{opacity:0}
 
 /* ---------- 上部バー ---------- */
@@ -279,3 +283,15 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
   .ro.wide{grid-column:span 3}
   .lbl{font-size:10px;padding:1px 6px}
 }
+
+/* いま、やること（動作ガイド） */
+.doing{display:flex;flex-direction:column;gap:8px}
+.do-item{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:start}
+.do-num{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:#20160a;background:#ffc93c}
+.do-item:nth-child(n+2) .do-num{background:#ff9f1c}
+.do-text{font-size:12.5px;font-weight:700;line-height:1.35}
+.do-why{grid-column:2;font-size:10.5px;color:var(--fg-dim);line-height:1.4}
+.do-bar{grid-column:2;height:4px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden}
+.do-fill{height:100%;border-radius:99px;background:#ffc93c;transition:width .1s linear}
+.do-empty{font-size:12px;color:var(--fg-dim)}

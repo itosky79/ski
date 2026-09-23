@@ -123,6 +123,7 @@
         <label><input type="checkbox" id="tg-angles" checked /> 角度ガイド</label>
         <label><input type="checkbox" id="tg-track" checked /> シュプール</label>
         <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+        <label><input type="checkbox" id="tg-moves" checked /> 動作ガイド</label>
         <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
         <label><input type="checkbox" id="tg-ghost" /> 比較：外向なし</label>
       </div>
@@ -135,6 +136,13 @@
       <h2>いまの局面</h2>
       <p class="phase" id="phase-name">—</p>
       <p class="phase-desc" id="phase-desc">—</p>
+    </section>
+
+    <section class="block" id="block-doing">
+      <h2>いま、やること</h2>
+      <div class="doing" id="doing-list"></div>
+      <p class="hint">3D の<b>黄色い矢印</b>が同じ動きを指します。
+        姿勢の絵ではなく、モデルの<b>変化</b>（少し先の姿勢との差）から出しています。</p>
     </section>
 
     <section class="block">
@@ -204,6 +212,9 @@
           <p>骨盤・上体を<b>ターンの外側</b>へ向けること。スキーの進行方向と骨盤の正面がつくる角度が<b>外向角</b>です。山回りで大きく、切り替えでほどけます。</p>
           <h3>外傾（がいけい）</h3>
           <p>腰から上を<b>外側へ横に曲げる</b>こと。内傾（体全体の傾き）に外傾を足すと、身体を倒しすぎずにエッジ角を増やせます。</p>
+          <h3>動作ガイド（黄色い矢印）</h3>
+          <p>「いま何をするか」を示します。姿勢の絵ではなく、<b>少し先の姿勢との差</b>から計算しているので、
+            矢印が出ているところが<b>いま動かしている場所</b>です。右のパネルに上位 3 つが言葉で出ます。</p>
           <h3>内傾（ないけい）</h3>
           <p>遠心力と重力の合力の向きに身体が倒れる角度。<b>力学で決まる</b>ので自分では自由に選べません。</p>
         </div>

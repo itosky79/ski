@@ -11,6 +11,9 @@
  *   pelvis : 骨盤ローカル（+x 左・+y 上・+z 前、原点は骨盤中心）
  *   femur  : 大腿骨ローカル（原点＝骨頭、−y が膝方向、+x が外側）
  *   shank  : 脛骨ローカル（原点＝膝、−y が足首方向、+x が外側）
+ *   shoulder: 肩関節ローカル（胸郭に連結。+x 左・+y 上・+z 前）
+ *   humerus : 上腕骨ローカル（原点＝肩、−y が肘方向、+x が外側）
+ *   forearm : 前腕ローカル（原点＝肘、−y が手方向、+x が外側）
  *   spineXX: その椎骨のローカル
  *
  * ■ 出典
@@ -139,11 +142,74 @@ export const MUSCLES = [
     note: '背骨を立てる。前に潰れないよう支え続ける。',
   },
   {
+    id: 'piriformis', name: '梨状筋', short: '梨状筋', color: 0xb388ff, w: 0.024, th: 0.014,
+    origin: { node: 'pelvis', p: P(0.014, -0.012, -0.092) },     // 仙骨前面
+    insertion: { node: 'femur', p: P(0.046, -0.012, -0.012) },   // 大転子の上
+    pull: [['hipExternalRot', 1.0]],
+    note: '股関節を外へ回す。骨盤を外向へ向けるのはこの筋のしごと。',
+  },
+  {
+    id: 'sartorius', name: '縫工筋', short: '縫工筋', color: 0x8fd98f, w: 0.020, th: 0.012,
+    origin: { node: 'pelvis', p: P(0.108, 0.034, 0.080) },       // 上前腸骨棘
+    via: [{ node: 'femur', p: P(0.006, -0.235, 0.044) }],
+    insertion: { node: 'shank', p: P(-0.026, -0.062, 0.016) },   // 鵞足（脛骨内側）
+    pull: [['hipFlexion', 0.45], ['hipExternalRot', 0.35], ['kneeFlexion', 0.25]],
+    note: '身体でいちばん長い筋。太ももを斜めに横切って膝の内側へ。',
+  },
+  {
     id: 'quadratus', name: '腰方形筋', short: '腰方形筋', color: 0x59d9c8, w: 0.027, th: 0.017,
     origin: { node: 'pelvis', p: P(0.056, 0.068, -0.028) },      // 腸骨稜
     insertion: { node: 'spineT12', p: P(0.042, 0.012, -0.018) }, // 第12肋骨・腰椎横突起
     pull: [['trunkLateral', 1.0]],
     note: '骨盤と肋骨をつなぐ横の支え。外傾で骨盤の高さを保つ。',
+  },
+  /* ---------------- 背中・胸・肩・腕 ---------------- */
+  {
+    id: 'latissimus', name: '広背筋', short: '広背筋', color: 0x7fb2ff, w: 0.062, th: 0.016,
+    origin: { node: 'pelvis', p: P(0.038, 0.072, -0.076) },      // 腸骨稜・胸腰筋膜
+    via: [{ node: 'spineT9', p: P(0.062, 0, -0.056) }],
+    insertion: { node: 'humerus', p: P(0.006, -0.052, 0.018) },  // 上腕骨小結節稜
+    pull: [['trunkRotation', 0.55], ['trunkExtension', 0.45], ['armHold', 0.40]],
+    note: '骨盤から上腕までをつなぐ大きな三角形。上体のひねりを腕まで伝える。',
+  },
+  {
+    id: 'trapezius', name: '僧帽筋', short: '僧帽筋', color: 0x9fd4ff, w: 0.050, th: 0.014,
+    origin: { node: 'spineT6', p: P(0.014, 0.004, -0.050) },
+    via: [{ node: 'spineT1', p: P(0.048, 0, -0.046) }],
+    insertion: { node: 'shoulder', p: P(0.004, 0.022, -0.024) }, // 肩甲棘・肩峰
+    pull: [['armHold', 0.55], ['trunkExtension', 0.30]],
+    note: '肩甲骨を引き寄せて支える。腕を前に構えたまま保つのに要る。',
+  },
+  {
+    id: 'pectoralis', name: '大胸筋', short: '大胸筋', color: 0xffb3a7, w: 0.054, th: 0.017,
+    origin: { node: 'spineT6', p: P(0.026, 0.006, 0.136) },      // 胸骨・肋軟骨
+    insertion: { node: 'humerus', p: P(0.026, -0.050, 0.020) },  // 大結節稜
+    pull: [['armHold', 0.65], ['trunkRotation', 0.35]],
+    note: '腕を身体の前へ引きつける。ストックを前に構える形を保つ。',
+  },
+  {
+    id: 'deltoid', name: '三角筋', short: '三角筋', color: 0xffc46b, w: 0.038, th: 0.019,
+    origin: { node: 'shoulder', p: P(0.008, 0.026, -0.010) },    // 肩峰・鎖骨外側
+    via: [{ node: 'humerus', p: P(0.038, -0.058, 0.006) }],
+    insertion: { node: 'humerus', p: P(0.016, -0.132, 0.006) },  // 三角筋粗面
+    pull: [['armHold', 1.0]],
+    note: '肩の丸み。腕を上げたまま保つ筋。',
+  },
+  {
+    id: 'biceps', name: '上腕二頭筋', short: '上腕二頭筋', color: 0xff9f8a, w: 0.030, th: 0.019,
+    origin: { node: 'shoulder', p: P(-0.006, 0.004, 0.026) },    // 肩甲骨関節上結節
+    via: [{ node: 'humerus', p: P(0.002, -0.110, 0.032) }],
+    insertion: { node: 'forearm', p: P(0.002, -0.046, 0.022) },  // 橈骨粗面
+    pull: [['elbowFlexion', 1.0]],
+    note: '肘を曲げて保つ。ストックを構える腕の形をつくる。',
+  },
+  {
+    id: 'tricepsBrachii', name: '上腕三頭筋', short: '上腕三頭筋', color: 0xc9a0ff, w: 0.032, th: 0.020,
+    origin: { node: 'shoulder', p: P(0.010, -0.006, -0.026) },
+    via: [{ node: 'humerus', p: P(0.004, -0.120, -0.028) }],
+    insertion: { node: 'forearm', p: P(0.000, -0.018, -0.030) }, // 肘頭
+    pull: [['elbowExtension', 1.0]],
+    note: '肘を伸ばす。ストックを突いて身体を押し出すときに働く。',
   },
 ];
 

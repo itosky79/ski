@@ -271,7 +271,8 @@ export class UI {
         h.onParam(k, parseFloat(el.value));
       });
     }
-    const toggles = ['forces', 'body', 'skeleton', 'pelvis', 'angles', 'track', 'gates', 'muscles', 'ghost'];
+    const toggles = ['forces', 'body', 'skeleton', 'pelvis', 'angles', 'track', 'gates',
+                     'moves', 'muscles', 'ghost'];
     this.toggles = {};
     for (const t of toggles) {
       const el = $('#tg-' + t);
@@ -411,6 +412,39 @@ export class UI {
     this.drawCompass(s);
     if (this.series) this.drawChart(this.series, s.phase);
     this.lastPhase = s.phase;
+  }
+
+  /**
+   * 「いま、やること」。動作ガイドが出した上位の動きを並べる。
+   * @param {Array} moves [{ text, why, mag }]
+   */
+  updateDoing(moves, on) {
+    const box = document.querySelector('#doing-list');
+    const block = document.querySelector('#block-doing');
+    if (!box || !block) return;
+    block.hidden = !on;
+    if (!on) return;
+    if (!this._doRows) { box.innerHTML = ''; this._doRows = []; }
+    while (this._doRows.length < 3) {
+      const el = document.createElement('div');
+      el.className = 'do-item';
+      el.innerHTML = '<span class="do-num"></span><span class="do-text"></span>'
+        + '<div class="do-bar"><div class="do-fill"></div></div>'
+        + '<span class="do-why"></span>';
+      box.appendChild(el);
+      this._doRows.push({ el, num: el.querySelector('.do-num'),
+        text: el.querySelector('.do-text'), why: el.querySelector('.do-why'),
+        fill: el.querySelector('.do-fill') });
+    }
+    this._doRows.forEach((row, i) => {
+      const m = moves && moves[i];
+      row.el.style.display = m ? '' : 'none';
+      if (!m) return;
+      row.num.textContent = String(i + 1);
+      row.text.textContent = m.text;
+      row.why.textContent = m.why;
+      row.fill.style.width = `${Math.round(m.mag * 100)}%`;
+    });
   }
 
   /** 働いている筋の一覧（活動度の高い順） */
