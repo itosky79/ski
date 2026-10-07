@@ -89,8 +89,8 @@ export const DISCIPLINES = {
     speedKmh: 42,           // ワールドカップの平均的な滑走速度
     slopeDeg: 22,
     counterDeg: 18,         // 骨盤の外向角の最大値（上体はこの約 2 倍になる）
-    angulationDeg: 24,      // 外傾角の最大値
-    kneeAngulationDeg: 8,
+    angulationDeg: 42,      // 脚と上体の角度差。上体を立てるのはこの角度      // 外傾角の最大値
+    platformDeg: 13,        // エッジ角 = 内傾角 + これ（板を噛ませる角度）
     stanceWidth: 0.26,      // 基準のスタンス幅 [m]（エッジ角に応じて 0.7〜1.2 倍になる）
     glideFactor: 0.45,      // 重力の斜面成分のうち加速に回る割合（前後のポジションを決める）
     glideAmp: 0.30,         // その位相変化（前半は前に乗り、後半は後ろに残る）
@@ -126,8 +126,8 @@ export const DISCIPLINES = {
     speedKmh: 65,
     slopeDeg: 19,
     counterDeg: 11,         // GS は骨盤の外向が小さい
-    angulationDeg: 20,
-    kneeAngulationDeg: 6,
+    angulationDeg: 33,
+    platformDeg: 11,
     stanceWidth: 0.32,
     glideFactor: 0.55,
     glideAmp: 0.28,

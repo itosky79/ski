@@ -142,8 +142,19 @@ export function createTorso(H, boneMat, discMat) {
   const root = new THREE.Group();
   root.name = 'torso';
 
+  /* 骨盤から見た脊柱の土台の傾き。
+   * 腰椎前弯 → 胸椎後弯と積み上げると、曲がりが下（長いてこ）で先に起きるぶん、
+   * 屈曲 0 でも「腰→肩の線」が 28.6°後ろへ倒れてしまう（実測）。
+   * 実際には仙骨は骨盤に対して前傾していて（仙骨傾斜角）、
+   * 直立時の肩は腰のほぼ真上にくる。その傾きを土台に入れておく。
+   * ここに股関節の前屈ぶんも足す（setHipFlex）。 */
+  const SACRAL_SLOPE = rad(28.6);
+  const stack = new THREE.Group();
+  stack.rotation.x = SACRAL_SLOPE;
+  root.add(stack);
+
   const verts = [];          // 椎骨のグループ（下から順）
-  let parent = root;
+  let parent = stack;
   for (const reg of REGIONS) {
     for (let i = 0; i < reg.n; i++) {
       const g = new THREE.Group();
@@ -237,6 +248,29 @@ export function createTorso(H, boneMat, discMat) {
   headMount.position.set(0, 0.020 * S, 0.004 * S);
   verts[verts.length - 1].add(headMount);
 
+  /* 肩の位置（体幹ローカル）を、シーングラフを触らずに計算する。
+   * 「入れた側屈角」と「実際に腰→肩の線が起きる角」の関係を求めるのに使う。
+   * Object3D を 60 個更新するより桁違いに速いので、毎フレーム呼べる。 */
+  const _q = new THREE.Quaternion(), _qi = new THREE.Quaternion();
+  const _e = new THREE.Euler(), _v = new THREE.Vector3(), _p = new THREE.Vector3();
+  const girdleIndex = L + T - 2;                 // 肩甲帯をぶら下げている椎骨（T2）
+
+  function shoulderLocal(lateral, axial, flexion, hipFlex = stack.rotation.x) {
+    _p.set(0, 0, 0);
+    _q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), hipFlex);
+    for (let i = 0; i <= girdleIndex; i++) {
+      const g = verts[i];
+      const reg = g.userData.region;
+      const n = REGIONS.find((r) => r.key === reg).n;
+      _p.add(_v.set(0, g.userData.height, 0).applyQuaternion(_q));
+      _e.set(flexion * SHARE.flexion[reg] / n + g.userData.curve,
+        axial * SHARE.axial[reg] / n,
+        lateral * SHARE.lateral[reg] / n, 'YXZ');
+      _q.multiply(_qi.setFromEuler(_e));
+    }
+    return _p.clone().add(_v.set(0, 0.004 * S, 0).applyQuaternion(_q));
+  }
+
   /**
    * 体幹の姿勢を更新する。
    * @param {number} lateral 側屈の合計 [rad]（+ で右へ倒れる）
@@ -258,6 +292,10 @@ export function createTorso(H, boneMat, discMat) {
 
   return {
     group: root, verts, thoracic, shoulders, headMount, ribMeshes, update,
+    /** 股関節の前屈（骨盤に対して上体を前へ倒す角度 [rad]） */
+    setHipFlex(a) { stack.rotation.x = SACRAL_SLOPE + a; },
+    /** 肩の位置（体幹ローカル）。シーングラフを触らずに計算する */
+    shoulderLocal,
     /** 脊柱の総高さ（仙骨上端から C1 まで） */
     height: verts.reduce((a, g) => a + g.userData.height, 0),
   };

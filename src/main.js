@@ -104,7 +104,7 @@ function makeModel(d, ghost = false) {
     gateWidth: d.gateWidth,
     counterDeg: ghost ? 0 : Math.round(d.counterDeg * lv.counterScale),
     angulationDeg: ghost ? 0 : Math.round(d.angulationDeg * lv.angulationScale),
-    kneeAngulationDeg: ghost ? 0 : d.kneeAngulationDeg,
+    platformDeg: d.platformDeg,
     stanceWidth: d.stanceWidth,
     glideFactor: d.glideFactor, glideAmp: d.glideAmp,
     skew: d.skew, gateLag: d.gateLag,

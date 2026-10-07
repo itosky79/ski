@@ -51,7 +51,6 @@ export class TurnModel {
       gateWidth: 5,
       counterDeg: 30,
       angulationDeg: 24,
-      kneeAngulationDeg: 8,
       stanceWidth: 0.26,
       innerLead: 0.16,
       height: 1.75,
@@ -77,6 +76,9 @@ export class TurnModel {
       gammaSpine: 1.15, activeSpine: 0.45,
       // 内スキーは外スキーより少し多く傾ける
       innerEdgeExtraDeg: 5,
+      // プラットフォーム角：雪面反力の作用線に対して板の裏をどれだけ起こすか。
+      // エッジ角 = 内傾角 λ ＋ これ。噛ませるために必ず正の値をとる。
+      platformDeg: 13,
       // トップの前後差（ステップ量）は、スタンス幅とエッジ角から決まる
       leadFactor: 0.35,
       // 内足の先行が骨盤の向きに伝わる割合（残りは膝と股関節が吸収する）
@@ -310,9 +312,8 @@ export class TurnModel {
     const flat = Math.exp(-((kn / 0.11) ** 2));
     const turning = 1 - 0.97 * flat;
 
-    // 外傾角・膝の角度は荷重に応じて深くなる
+    // 外傾角は荷重に応じて深くなる（膝の傾けはエッジ角から引き算で出す）
     const angulation = rad(P.angulationDeg) * Math.pow(loadNorm, 0.75) * turning;
-    const kneeAng = rad(P.kneeAngulationDeg) * Math.pow(loadNorm, 0.75) * turning;
 
     // 脚の長さ（接雪点→股関節）。荷重が高いほど伸ばす
     const legLen = P.height * (0.455 + 0.075 * loadNorm);
@@ -337,11 +338,25 @@ export class TurnModel {
     const legDir = rotateToward(d.uLeg, d.inward, axis, fr.phiLeg - lambda);
     const torsoDir = rotateToward(d.uLeg, d.inward, axis, fr.phiTorso - lambda);
 
-    /* 膝の傾け（ニーアンギュレーション）は、いま乗っているエッジをさらに立てる。
-     * 符号をそのまま足すと、切り替えでエッジの向きが変わったとき
-     * 「エッジ角の大きさ」が跳ぶ。tanh でなめらかな符号にして足す。 */
-    const edgeSign = Math.tanh(fr.phiLeg / rad(4));
-    const edgeAngle = fr.phiLeg + kneeAng * edgeSign;       // 外スキーのエッジ角
+    /* --- エッジ角 ---
+     * 「脚の線（接雪点→股関節）＋ 膝の傾け」で出すのをやめる。
+     * 脚の線を寝かせるほどエッジ角まで一緒に増えてしまい、上体を起こそうとすると
+     * エッジ角が 80°を超える、という破綻になる。
+     *
+     * 実際のエッジ角を決めているのは<b>プラットフォーム角</b>
+     * ＝「雪面反力の作用線に対して、板の裏をどれだけ起こしておくか」。
+     * 作用線は λ で決まっているので、
+     *     エッジ角 = λ ＋ プラットフォーム角
+     * となる。板がフラットを通る切り替えでは 0 に戻す。
+     *
+     * すると膝・足首の傾け（ニーアンギュレーション）は<b>引き算で出る</b>。
+     *     膝の傾け = エッジ角 − 脚の線
+     * 脚の線をどれだけ寝かせても、差を膝と足首が吸収するだけで、
+     * エッジ角は物理で決まった値のまま動かない。 */
+    const edgeSign = Math.tanh(lambda / rad(4));
+    const edgeAngle = lambda
+      + rad(P.platformDeg) * Math.pow(loadNorm, 0.6) * turning * edgeSign;
+    const kneeAng = edgeAngle - fr.phiLeg;                  // 膝・足首が吸収するぶん
     const edgeAngleInner = edgeAngle
       + rad(P.innerEdgeExtraDeg) * loadNorm * edgeSign;
     const ratio = THREE.MathUtils.clamp(d.radius / P.skiSidecutR, 0, 1);

@@ -18,6 +18,10 @@ import { createMuscles, MUSCLES } from './muscles.js';
 import { computeMuscleLoad, applyMuscleActivation } from './biomech.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+/* 椎骨に分散した側屈が「腰→肩の線」に出てくる割合の逆数（実測で調整） */
+const SPINE_LAT_GAIN = 2.4;
+/* 骨盤から見た仙骨の前傾（torso.js と同じ値） */
+const SACRAL_SLOPE = 28.6 * Math.PI / 180;
 const rad = (d) => d * Math.PI / 180;
 
 /* ------------------------------------------------------------------ */
@@ -324,8 +328,11 @@ export function createSkier(opts = {}) {
     pelvis.setOuterSide(outwardIsRight);
 
     /* --- 骨盤のフレーム --- */
-    // 上下軸：脚と上体の中間（外傾の 65 % を股関節、35 % を腰椎が担う想定）
-    const hipShare = 0.65;
+    /* 上下軸：脚と上体の中間。外傾のほとんどは<b>股関節</b>で折る。
+     * 背骨を横に曲げて作ると上体が倒れ、腰椎の可動域（左右 25〜30°）も足りない。
+     * 競技者が「脚だけ角度をつけて上体は立てて」見えるのは、
+     * 曲げている場所が腰ではなく股関節だから。 */
+    const hipShare = 0.78;
     const pelvisUp = s.legDir.clone().lerp(s.torsoDir, hipShare).normalize();
     // 前後軸：進行方向を骨盤面に投影し、外向角ぶん外側へ回す
     let fwd = s.tangent.clone().projectOnPlane(pelvisUp).normalize();
@@ -416,9 +423,16 @@ export function createSkier(opts = {}) {
     torso.group.position.copy(sacralTop);
     torso.group.quaternion.copy(pelvisNode.quaternion);
 
-    // 側屈：外傾のうち脊柱が担うぶん（残りは股関節）。外側へ倒す向きが +
-    const spineLateral = (1 - hipShare) * s.angulation
-      * (right.dot(s.outward) > 0 ? -1 : 1);
+    /* 側屈：外傾のうち脊柱が担うぶん（残りは股関節）。
+     * 外傾は「脚より上体を<b>起こす</b>」動きなので、胸は骨盤より
+     * ターンの<b>外側</b>へ戻る向きに曲がる。符号が逆だと、脊柱が傾きを
+     * 足す側に働いて上体がよけいに寝る（実際にそうなっていた）。
+     *
+     * さらに、曲がりを椎骨に分散すると「腰から肩を結んだ線」は
+     * 曲がり角の半分ぶんしか起きない。前額面の解が想定しているのは
+     * この線なので、分散ぶんを見込んで倍率を掛ける。 */
+    const spineLateral = SPINE_LAT_GAIN * (1 - hipShare) * s.angulation
+      * (right.dot(s.outward) > 0 ? 1 : -1);
     // 回旋：肩と骨盤の差。外側へ回す向きが +
     // ブロックの反作用：ポールを押した反動で肩はさらに谷を向く。
     // 「上体は動かさない」のではなく、動かないように支えている（modeled）。
@@ -426,10 +440,33 @@ export function createSkier(opts = {}) {
     const spineAxial = (((s.counterSpine ?? s.counter) - s.counter)
       + rad(3.0) * blockNow)
       * (right.dot(s.outward) > 0 ? -1 : 1);
-    // 屈曲：前傾の深さ（荷重が高いほど深く構える）
-    const spineFlex = rad(14 + 16 * s.loadNorm);
-    torso.update(spineLateral, spineAxial, spineFlex);
-    state.spine = { lateral: spineLateral, axial: spineAxial, flex: spineFlex };
+    /* 前傾は「背中を丸める」のではなく「股関節で折る」。
+     * 競技者の背中は意外と真っ直ぐで、前傾のほとんどは股関節で作っている。
+     * 荷重が高いほど深く折り、背骨自身の屈曲は控えめに残す。 */
+    const hipFlexSag = rad(6 + 10 * s.loadNorm);
+    torso.setHipFlex(hipFlexSag);
+    const spineFlex = rad(5 + 8 * s.loadNorm);
+
+    /* 側屈は 24 個の椎骨に分散するので、入れた角度どおりには
+     * 「腰→肩の線」は動かない（しかも股関節の前屈量で応答が変わる）。
+     * 骨盤から見た肩の位置は幾何だけで出せるので、2 点試して応答を求め、
+     * 必要な入力を逆算する。シーングラフは最後に 1 回だけ更新する。 */
+    /* 前額面（進行方向に垂直な面）へ落として測る。前額面の解はこの面の話なので、
+     * 前傾ぶんを含めた 3D の向きで比べても合わない。 */
+    const latOf = (x) => {
+      const v = torso.shoulderLocal(x, spineAxial, spineFlex, hipFlexSag + SACRAL_SLOPE)
+        .applyQuaternion(pelvisNode.quaternion);
+      return Math.atan2(v.dot(s.outward), v.dot(s.normal));
+    };
+    const targetLat = Math.atan2(s.torsoDir.dot(s.outward), s.torsoDir.dot(s.normal));
+    const lat0 = latOf(0);
+    const probe = rad(12);
+    const resp = (latOf(probe) - lat0) / probe;
+    const spineLateralUsed = Math.abs(resp) > 1e-3
+      ? THREE.MathUtils.clamp((targetLat - lat0) / resp, -rad(40), rad(40))
+      : spineLateral;
+    torso.update(spineLateralUsed, spineAxial, spineFlex);
+    state.spine = { lateral: spineLateralUsed, axial: spineAxial, flex: spineFlex, hipFlex: hipFlexSag };
 
     /* 体幹から出てくるフレーム */
     const chestPos = new THREE.Vector3();
