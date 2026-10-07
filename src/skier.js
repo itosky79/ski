@@ -27,6 +27,19 @@ const SPINE_LAT_GAIN = 2.4;
 const PELVIS_TILT0 = 10, PELVIS_TILT1 = 18;
 /* 骨盤の上での上体の前傾 [deg] と、骨盤の前傾を打ち消す割合 */
 const LUMBAR0 = 6, LUMBAR1 = 10, LUMBAR_COMP = 0.80;
+/* 脚を深く畳んだときに足す前傾 [deg]（調整値）。
+ * 脚の長さはモデルで 0.455H（切り替え）〜 0.53H（最大荷重）なので、切り替えでいちばん畳んでいる。
+ * 膝を 90° 近く曲げているのに上体が立ったままだと「椅子に座った」形（後傾）に見える。
+ * しゃがむほど骨盤ごと前へ倒し、すねと背中がだいたい平行になるようにする。
+ * このぶんは腰椎で打ち消さない（打ち消すと上体が立ったままになる）。 */
+const PELVIS_TILT_CROUCH = 18;
+/* すねの前傾の下限 [deg]（板の法線から前へ。調整値）。
+ * レース用ブーツはカフがもともと前へ傾いていて、すねをそれより立てることはできない。
+ * 重心合わせで腰を引くと、脚の伸びた局面ですねが 9° 前後まで立っていた。
+ * 下回りそうなら腰を力の線に沿って少し下げ（膝をもう少し曲げ）てすねを前へ倒す。 */
+const SHIN_MIN = 17;
+/* そのために腰を下げる量の上限 [m] */
+const HIP_DROP_MAX = 0.08;
 /* 骨盤から見た仙骨の前傾（torso.js と同じ値） */
 const SACRAL_SLOPE = 28.6 * Math.PI / 180;
 const rad = (d) => d * Math.PI / 180;
@@ -368,7 +381,8 @@ export function createSkier(opts = {}) {
      * 脚の線の前後の傾きは減速の強さで変わる（SL は後ろへ −20°、GS は −14° 程度）ので、
      * 脚に対して一定量倒すと種目によって骨盤の向きがばらつく。 */
     const tiltOf = () => Math.atan2(pelvisUp.dot(s.tangent), pelvisUp.dot(N));
-    const tiltWant = rad(PELVIS_TILT0 + PELVIS_TILT1 * s.loadNorm);
+    const crouchTilt = rad(PELVIS_TILT_CROUCH * (1 - s.loadNorm));
+    const tiltWant = rad(PELVIS_TILT0 + PELVIS_TILT1 * s.loadNorm) + crouchTilt;
     // 骨盤は内傾しているので、左右軸まわりの回転は前後の傾きに 1:1 では効かない。
     // 1 回回して残りをもう 1 回回す（2 回でほぼ一致する）。
     let pelvisTilt = 0;
@@ -483,7 +497,7 @@ export function createSkier(opts = {}) {
     /* 前傾は「背中を丸める」のではなく「股関節で折る」。
      * 前傾の大半は骨盤ごと倒した（上の pelvisTilt）ので、骨盤の上では
      * そのぶんを戻して背中をまっすぐに保つ（腰を丸めない）。 */
-    const hipFlexSag = rad(LUMBAR0 + LUMBAR1 * s.loadNorm) - LUMBAR_COMP * pelvisTilt;
+    const hipFlexSag = rad(LUMBAR0 + LUMBAR1 * s.loadNorm) - LUMBAR_COMP * (pelvisTilt - crouchTilt);
     torso.setHipFlex(hipFlexSag);
     const spineFlex = rad(5 + 8 * s.loadNorm);
 
@@ -709,19 +723,42 @@ export function createSkier(opts = {}) {
     const latAxis = new THREE.Vector3().crossVectors(s.uLeg, s.tangent).normalize();
     const foreAxis = new THREE.Vector3().crossVectors(latAxis, s.uLeg).normalize();
     const foreGain = 1 / Math.max(0.5, foreAxis.dot(s.tangent));   // 斜面方向に動かしたときの効き
+    /* すねの前傾（荷重の配分で重み付け。切り替えでは左右 50:50 なので外内の入れ替わりで跳ばない）
+     * と、腰を力の線に沿って下げたときの効き。脚を 2 本の等しい棒とみると、
+     * 腰と足首の距離 D に対してすねは acos(D/2L) だけ前へ開くので、
+     * d(すねの角)/dD = −1/√(4L² − D²)。 */
+    const Lleg = (seg.thigh + seg.shank) / 2;
+    const shinOf = (P) => {
+      let th = 0, dDdth = 0;
+      for (const side of ['L', 'R']) {
+        const w = armRole[side].share;
+        const shin = P.knees[side].clone().sub(ankles[side]);
+        th += w * Math.atan2(shin.dot(s.tangent), shin.dot(skiNormals[side]));
+        const D = P.hips[side].distanceTo(ankles[side]);
+        dDdth += w * Math.sqrt(Math.max(1e-4, 4 * Lleg * Lleg - D * D));
+      }
+      return { th, dDdth };
+    };
+    // なめらかな「下回ったぶん」（境界で折れない softplus。幅 3°）
+    const shortfall = (x) => { const w = rad(3); return w * Math.log1p(Math.exp(x / w)); };
     const shift = new THREE.Vector3();
-    let rawLat = 0, rawFore = 0;
+    let rawLat = 0, rawFore = 0, drop = 0;
     let P = posePass(shift);
     let actual = computeCoM(P);
-    for (let it = 0; it < 2; it++) {
+    for (let it = 0; it < 3; it++) {
       const fix = s.com.clone().sub(actual);
       rawLat += HIP_SHIFT_GAIN * fix.dot(latAxis);
       rawFore += HIP_SHIFT_GAIN * fix.dot(foreAxis) * foreGain;
+      const sh = shinOf(P);
+      drop += shortfall(rad(SHIN_MIN) - sh.th) * sh.dDdth;
+      const dropUsed = softLimit(Math.max(0, drop), HIP_DROP_MAX);
       shift.copy(latAxis).multiplyScalar(rawLat)
-        .addScaledVector(s.tangent, softLimit(rawFore, HIP_SHIFT_FORE_MAX));
+        .addScaledVector(s.tangent, softLimit(rawFore, HIP_SHIFT_FORE_MAX))
+        .addScaledVector(s.uLeg, -dropUsed);
       P = posePass(shift);
       actual = computeCoM(P);
     }
+    state.hipDrop = softLimit(Math.max(0, drop), HIP_DROP_MAX);
     const residual = s.com.clone().sub(actual);
     state.hipShift = shift.clone();
     state.comResidual = {
