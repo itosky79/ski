@@ -14,7 +14,8 @@ import { ANTHRO, SEGMENT_MASS, BONE_COLORS } from './constants.js';
 import { createPelvis } from './pelvis.js';
 import { createLegBones } from './leg.js';
 import { createTorso } from './torso.js';
-import { createBody, createSkinMaterial, createHeadGear } from './body.js';
+import { createBody, createSkinMaterial } from './body.js';
+import { makeSki, makeBoot, makeGlove, makePole, createHeadGear } from './gear.js';
 import { createSuitMaterial, updateSuitWindow } from './suit.js';
 import { createMuscles, MUSCLES } from './muscles.js';
 import { computeMuscleLoad, applyMuscleActivation } from './biomech.js';
@@ -131,124 +132,6 @@ function closestSegSeg(p0, p1, q0, q1) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 用具（gear.js に置き換える前提の簡易版）                            */
-/*   呼び出し側は userData のセッター（setRole / setShank / setPose）を */
-/*   通して動かすので、同じ形の関数を差し替えれば作り直しはいらない。   */
-/* ------------------------------------------------------------------ */
-function makeSki(len, waist, shoulder, tail, color) {
-  const half = len / 2;
-  // 形状はローカル座標 (x = 幅, y = −板の長さ) で作り、
-  // rotateX(-90°) で「+Z が前・+Y が上」に直す
-  const pts = [];
-  const N = 30;
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;                       // 0: テール → 1: トップ
-    const z = -half + len * t;
-    // サイドカット：テール幅 → ウエスト（中央）→ トップ幅
-    const edge = t < 0.5
-      ? THREE.MathUtils.lerp(tail, waist, Math.sin(t * Math.PI))
-      : THREE.MathUtils.lerp(waist, shoulder, Math.sin((t - 0.5) * Math.PI));
-    let w = edge / 2;
-    if (t > 0.94) w *= (1 - t) / 0.06 * 0.75 + 0.25;   // トップを丸める
-    if (t < 0.03) w *= t / 0.03 * 0.6 + 0.4;
-    pts.push([z, w]);
-  }
-  const shape = new THREE.Shape();
-  shape.moveTo(pts[0][1], -pts[0][0]);
-  for (const [z, w] of pts) shape.lineTo(w, -z);
-  for (let i = pts.length - 1; i >= 0; i--) shape.lineTo(-pts[i][1], -pts[i][0]);
-  shape.closePath();
-
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.014, bevelEnabled: false, curveSegments: 4 });
-  geo.rotateX(-Math.PI / 2);          // 長手 → +Z、厚み → +Y
-  // トップとテールを反らせる
-  const rise = (z) => {
-    const tTip = Math.max(0, (z - half * 0.70) / (half * 0.30));
-    const tTail = Math.max(0, (-z - half * 0.84) / (half * 0.16));
-    return 0.075 * tTip * tTip + 0.020 * tTail * tTail;
-  };
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + rise(pos.getZ(i)));
-  geo.computeVertexNormals();
-
-  const ski = new THREE.Group();
-  const body = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    color, roughness: 0.32, metalness: 0.25, side: THREE.DoubleSide,
-  }));
-  ski.add(body);
-  const plate = new THREE.Mesh(
-    new THREE.BoxGeometry(waist * 1.3, 0.020, 0.32),
-    new THREE.MeshStandardMaterial({ color: 0x1b2634, roughness: 0.6 }));
-  plate.position.set(0, 0.026, 0.01);
-  ski.add(plate);
-  ski.userData.mat = body.material;
-  ski.userData.mats = [body.material, plate.material];
-  ski.userData.standHeight = STAND_DEFAULT;
-  // 板の裏の縁（ローカル座標）。雪面にいちばん近い点を探すのに使う
-  const outline = [];
-  for (const [z, w] of pts) outline.push(w, rise(z), z, -w, rise(z), z);
-  ski.userData.baseOutline = new Float32Array(outline);
-  return ski;
-}
-
-/**
- * スキーブーツ。箱ひとつだと「板の上に載った四角」にしか見えないので、
- * ソール・ロアシェル・カフ（前傾したすねの筒）・バックルに分ける。
- * ローカル軸はスキーと同じ x=横・y=上・z=前で、原点はソール下面。
- * 3 番目の引数（すねのガードなど）は gear.js 版で使う。
- */
-function makeBoot(shellMat, buckleMat) {
-  const g = new THREE.Group();
-  const add = (geo, mat, [x, y, z], rx = 0) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true;
-    g.add(m); return m;
-  };
-  // ソール（ビンディングに噛む板。前後にコバが出る）
-  add(new THREE.BoxGeometry(0.104, 0.020, 0.308), shellMat, [0, 0.010, 0]);
-  // ロアシェル（足を包む部分。つま先へ向かって低く細くなる）
-  add(new THREE.BoxGeometry(0.098, 0.085, 0.250), shellMat, [0, 0.062, -0.006]);
-  add(new THREE.BoxGeometry(0.086, 0.052, 0.090), shellMat, [0, 0.042, 0.118]);
-  // カフ（すねを包む筒。前傾角ぶん傾いている）
-  add(new THREE.BoxGeometry(0.092, 0.150, 0.115), shellMat, [0, 0.168, -0.028], 0.30);
-  // バックル 4 個（外側に並ぶ）
-  for (let i = 0; i < 4; i++) {
-    const y = 0.048 + i * 0.056, z = 0.052 - i * 0.026;
-    add(new THREE.BoxGeometry(0.106, 0.014, 0.030), buckleMat, [0, y, z], i >= 2 ? 0.30 : 0);
-  }
-  g.userData.mats = [shellMat, buckleMat];
-  return g;
-}
-
-/** グローブ（簡易版）：前腕の向きにのばした楕円体 */
-function makeGlove(mat) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), mat);
-  m.scale.set(0.038, 0.042, 0.062);
-  m.castShadow = true;
-  m.userData.mats = [mat];
-  /** @param hand 手首の位置 @param poleDir ストックの向き @param forearmDir 肘→手 */
-  m.userData.setPose = (hand, poleDir, forearmDir) => {
-    m.position.copy(hand).addScaledVector(forearmDir, 0.026);
-    m.quaternion.setFromUnitVectors(V(0, 0, 1), forearmDir);
-  };
-  return m;
-}
-
-/** ストック（簡易版）：グリップから先端までの 1 本の円柱 */
-function makePole(disc, mat) {
-  const g = new THREE.Group();
-  const shaft = makeLink(mat, 0.008);
-  g.add(shaft);
-  g.userData.shaft = shaft;
-  g.userData.mats = [mat];
-  /** @param grip 握り @param dir 先端への向き（単位） @param len 長さ @param towardBody 身体へ向く単位ベクトル */
-  g.userData.setPose = (grip, dir, len) => {
-    shaft.userData.set(grip, grip.clone().addScaledVector(dir, len));
-  };
-  return g;
-}
-
-/* ------------------------------------------------------------------ */
 /* スキーヤー本体                                                      */
 /* ------------------------------------------------------------------ */
 export function createSkier(opts = {}) {
@@ -278,8 +161,8 @@ export function createSkier(opts = {}) {
   const legMat = new THREE.MeshStandardMaterial({ color: 0xeef3fa, roughness: 0.45 });
   const jointMat = new THREE.MeshStandardMaterial({ color: 0xc7d4e4, roughness: 0.45 });
   const skinMat = createSkinMaterial(0x7799c6, 0.36);
+  // ブーツのシェルの材質（gear.js が頂点色用に複製して白いシェルに塗る）
   const gearMat = new THREE.MeshStandardMaterial({ color: 0x27354a, roughness: 0.55 });
-  const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf2f6fb, roughness: 0.18, metalness: 0.1 });
 
   /* --- 骨格グループ --- */
   const skeleton = new THREE.Group(); skeleton.name = 'skeleton'; root.add(skeleton);
@@ -328,21 +211,19 @@ export function createSkier(opts = {}) {
   const bodyMeshes = [];
   body.group.traverse((o) => { if (o.isMesh) bodyMeshes.push(o); });
 
-  /* 装備：ヘルメット・ゴーグル・ブーツ・スキー・ストック */
+  /* 装備：ヘルメット・ゴーグル・ブーツ・スキー・ストック（形と塗り分けは gear.js）。
+   * ヘルメット・ゴーグルの枠・ストラップの材質は gear.js が無彩色で作る
+   * （以前の枠とストラップは赤で、「赤＝外側」の約束とまぎれていた）。 */
   const faceMat = new THREE.MeshStandardMaterial({ color: 0xe8c9a8, roughness: 0.75 });
   // レンズはミラー。金属の色が映り込みの色になるので、青みのある銀にする
   const lensMat = new THREE.MeshStandardMaterial({
     color: 0xb9c8ec, roughness: 0.06, metalness: 1.0,
     emissive: 0x000000, side: THREE.DoubleSide,
     envMap: opts.env ?? null, envMapIntensity: 1.4 });
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf24b3d, roughness: 0.45 });
-  const strapMat = new THREE.MeshStandardMaterial({
-    color: 0xf24b3d, roughness: 0.75, side: THREE.DoubleSide });
-  const head = createHeadGear(H, { skin: faceMat, helmet: helmetMat,
-    lens: lensMat, frame: frameMat, strap: strapMat });
+  const head = createHeadGear(H, { skin: faceMat, lens: lensMat });
   head.setChinGuard(disc.key === 'SL');   // SL はチンガード付きヘルメット
   gearG.add(head.group);
-  const headMats = head.mats ?? [helmetMat, faceMat, lensMat, frameMat, strapMat];
+  const headMats = head.mats ?? [faceMat, lensMat];
 
   /* グローブ */
   const gloveMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.7 });
@@ -352,8 +233,12 @@ export function createSkier(opts = {}) {
   const buckleMat = new THREE.MeshStandardMaterial({
     color: 0xc9d4e2, roughness: 0.32, metalness: 0.6,
     envMap: opts.env ?? null, envMapIntensity: 1.0 });
+  // SL はすね当て付き（旗門を脚で倒すため）。バックルは外側に並ぶので左右を渡す
   const bootOpts = { shinGuard: disc.key === 'SL', shankLen: seg.shank };
-  const boots = { L: makeBoot(gearMat, buckleMat, bootOpts), R: makeBoot(gearMat, buckleMat, bootOpts) };
+  const boots = {
+    L: makeBoot(gearMat, buckleMat, { ...bootOpts, side: 'L' }),
+    R: makeBoot(gearMat, buckleMat, { ...bootOpts, side: 'R' }),
+  };
   const skis = {
     L: makeSki(disc.skiLength, disc.skiWaist, disc.skiShoulder, disc.skiTail, 0x1e6bd6),
     R: makeSki(disc.skiLength, disc.skiWaist, disc.skiShoulder, disc.skiTail, 0x1e6bd6),
@@ -992,9 +877,13 @@ export function createSkier(opts = {}) {
         dir.addScaledVector(push, 0.5 * worst).normalize();
         fitSnow();
       }
-      const toBody = chestPos.clone().sub(hand).normalize();
-      gloves[side].userData.setPose(hand, dir, forearm);
+      /* 身体へ向く向きは「手 → 同じ側の肩」。GS のベントストックはこの反対側へふくらむので、
+       * シャフトは腰の外を下から回り込むように曲がる（胸へ向けると真横にふくらみ、横から見えない）。
+       * SL のハンドガードもこの反対側（拳の正面）に付く。 */
+      const toBody = shoulders[side].clone().sub(hand).normalize();
       poles[side].userData.setPose(hand, dir, POLE_LEN, toBody);
+      // 拳はグリップの軸に合わせる（GS のベントストックでは、握りの軸と弦の向きが 10° ほど違う）
+      gloves[side].userData.setPose(hand, poles[side].userData.gripDir ?? dir, forearm);
       poleInfo[side] = { grip: hand.clone(), dir: dir.clone(), tip: hand.clone().addScaledVector(dir, POLE_LEN) };
     }
     state.poles = poleInfo;
@@ -1145,7 +1034,9 @@ export function createSkier(opts = {}) {
     const bodyShown = flags.body && !focusPelvis;
     const seeThrough = xray || !bodyShown;
     for (const m of bodyMeshes) {
-      if (m.userData.keepMaterial) continue;     // gear.js のゼッケンなど、自前の色を持つもの
+      // ゼッケンは X 線では消す（胸の骨を隠してしまうので）
+      if (m.userData.hideInXray) m.visible = !xray;
+      if (m.userData.keepMaterial) continue;     // body.js のゼッケンなど、自前の色を持つもの
       m.material = xray ? skinMat : suitMat;
       // スーツは窓のために半透明扱い。骨盤と脚の骨（不透明）を先に描いておく
       m.renderOrder = xray ? 0 : 2;
