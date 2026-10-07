@@ -4,3 +4,4 @@ node_modules/
 
 # 動作確認用のスクリプト（コミットしない）
 .test-*.mjs
+.shot.mjs
