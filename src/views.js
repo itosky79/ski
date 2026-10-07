@@ -104,6 +104,7 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
     this.pan.set(0, 0, 0);
     this.first = true;            // 切り替えたらすぐその位置へ
+    this._prevT = null; this._prevEye = null;
   }
 
   setScale(k) {
@@ -119,6 +120,7 @@ export class CameraRig {
       this.camera.updateProjectionMatrix();
       this.fpYaw = 0; this.fpPitch = 0;
       this.first = true;
+      this._prevT = null; this._prevEye = null;
     } else if (mode === 'pelvis') {
       this.setPreset('pelvis');
     } else {
@@ -141,6 +143,9 @@ export class CameraRig {
         .applyAxisAngle(up, THREE.MathUtils.degToRad(this.fpYaw))
         .applyAxisAngle(right, THREE.MathUtils.degToRad(this.fpPitch - 24))
         .normalize();
+      // 滑走ぶんを先に足してから滑らかにする（でないと常に後ろへ取り残される）
+      if (!this.first && this._prevEye) cam.position.add(eye.clone().sub(this._prevEye));
+      this._prevEye = eye.clone();
       cam.position.lerp(eye, this.first ? 1 : 1 - Math.exp(-dt * 22));
       const q = new THREE.Quaternion().setFromRotationMatrix(
         new THREE.Matrix4().lookAt(cam.position, cam.position.clone().add(dir), up));
@@ -155,6 +160,16 @@ export class CameraRig {
       ? rigState.anchors.pelvis.clone().lerp(
         rigState.anchors.outerHip ?? rigState.anchors.pelvis, 0.45)
       : s.com.clone().addScaledVector(model.D, 0.5);
+    /* 注視点の追従。
+     * 単純な lerp だと、動いている的を追うときに
+     *     遅れ ＝ 速さ ÷ 追従係数
+     * の<b>ずれが残り続ける</b>。30 km/h（8.3 m/s）で係数 5 なら 1.7 m。
+     * 骨盤ビューはカメラ距離が 1.25 m しかないので、数秒で骨盤が画面の外へ出ていた。
+     * そこで「前のフレームからの移動ぶん」を先に足してから滑らかにする。
+     * こうすると等速で動く的には遅れずに付いていき、
+     * 揺れだけが滑らかになる。 */
+    if (!this.first && this._prevT) this.smoothTarget.add(t.clone().sub(this._prevT));
+    this._prevT = t.clone();
     this.smoothTarget.lerp(t, this.first ? 1 : 1 - Math.exp(-dt * 5));
     const target = this.smoothTarget.clone().add(this.pan);
 
