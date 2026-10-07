@@ -24,6 +24,7 @@ import { CameraRig } from './views.js';
 import { UI, LabelLayer } from './ui.js';
 import { MotionGuide } from './motion.js';
 import { Tour } from './tour.js';
+import { World } from './environment.js';
 
 const deg = (r) => r * 180 / Math.PI;
 /** 角度の表示（負の数はマイナス記号 −。カードのコンパスと同じ書き方にする） */
@@ -97,82 +98,9 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 900);
 scene.add(camera);
 
-/* ---- LEGACY WORLD (replaced by environment.js at merge) ---- */
-/**
- * いまの空・光・霧・環境マップ（中身はこれまでと同じで、ひとまとめにしただけ）。
- * 統合のときに environment.js の World と 2 行で差し替えられるよう、同じ形にしてある：
- *   envMap / build(model, { discipline, gateCount }) / update(s, camera, { u, dt, model }) / setPelvisMode(on)
- */
-function legacyWorld(renderer, scene, camera) {
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-  scene.fog = new THREE.Fog(0xcfe3f7, 60, 240);
-
-  /* 空（グラデーション） */
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(500, 32, 16),
-    new THREE.ShaderMaterial({
-      side: THREE.BackSide, depthWrite: false,
-      uniforms: { top: { value: new THREE.Color(0x2f6fb5) }, bottom: { value: new THREE.Color(0xdfeefc) } },
-      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'varying float h; uniform vec3 top; uniform vec3 bottom; void main(){ gl_FragColor = vec4(mix(bottom, top, smoothstep(-0.1,0.65,h)), 1.0); }',
-    }));
-  scene.add(sky);
-
-  /* 環境マップ：空と雪面から作る。これがないと金属（ゴーグルのレンズ・
-     ブーツのバックル・エッジ）が真っ黒になり、プラスチックにしか見えない。 */
-  let envMap = null;
-  {
-    const envScene = new THREE.Scene();
-    envScene.add(sky.clone());
-    const ground = new THREE.Mesh(
-      new THREE.SphereGeometry(400, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xeef4fb, side: THREE.BackSide }));
-    envScene.add(ground);
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    // scene.environment にすると全マテリアルが IBL を引いて重くなるので、
-    // 金属（ゴーグルのレンズ・バックル）にだけ個別に渡す。
-    envMap = pmrem.fromScene(envScene, 0.02).texture;
-    pmrem.dispose();
-  }
-
-  /* 光源 */
-  const hemi = new THREE.HemisphereLight(0xdcefff, 0xb9c9d8, 2.0);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff6e8, 2.9);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
-  sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
-  sun.shadow.camera.top = 8; sun.shadow.camera.bottom = -8;
-  sun.shadow.bias = -0.0012;
-  scene.add(sun, sun.target);
-  // 逆光側の弱い補助光。輪郭が黒く潰れないように
-  const fill = new THREE.DirectionalLight(0xd6e6ff, 0.65);
-  fill.position.set(-5, 4, -7);
-  scene.add(fill);
-  const sunOffset = new THREE.Vector3(6, 12, 5);
-
-  return {
-    envMap,
-    /** コースを作り直したとき（霧の距離は種目で変える：GS は旗門の間が長い） */
-    build(model, { discipline } = {}) {
-      scene.fog.near = discipline?.key === 'GS' ? 90 : 55;
-      scene.fog.far = discipline?.key === 'GS' ? 320 : 220;
-    },
-    /** 毎フレーム：太陽を追従させて影を出す */
-    update(s) {
-      sun.target.position.copy(s.com);
-      sun.position.copy(s.com).add(sunOffset);
-    },
-    setPelvisMode() {},
-  };
-}
-/* ---- END LEGACY WORLD ---- */
-const world = legacyWorld(renderer, scene, camera);
+/* 空・光・霧・地形・森・ネット・環境マップ（environment.js）。
+ * スキーヤーを作る前に環境マップが要るので、ここで作っておく。 */
+const world = new World(renderer, scene, camera);
 let envMap = world.envMap;
 
 /* ---------- モデル ---------- */
