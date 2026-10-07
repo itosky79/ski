@@ -44,7 +44,9 @@ body{
 /* 動作ガイドのラベル（何をするか）。いちばん読ませたいので強く出す */
 .lbl.do{background:#ffc93c;color:#20160a;font-weight:800;font-size:12.5px;
   border:1px solid rgba(0,0,0,.18);box-shadow:0 2px 10px rgba(0,0,0,.35)}
-.lbl.do.small{background:#ff9f1c;color:#1d1204;font-size:11px;font-weight:700}
+.lbl.do.small{background:#ffe49e;color:#20160a;font-size:11px;font-weight:700}
+/* 「保つ」指示（外向キープなど）：動かす指示と同じ黄色に、外側の輪を足して「止めておく」を見分ける */
+.lbl.do.hold{box-shadow:0 0 0 2.5px rgba(32,22,10,.55),0 0 0 4.5px rgba(255,201,60,.75),0 2px 10px rgba(0,0,0,.35)}
 .lbl.hide{opacity:0}
 
 /* ---------- 上部バー ---------- */
@@ -54,8 +56,11 @@ body{
   padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px;
   background:linear-gradient(180deg,rgba(6,11,19,.92),rgba(6,11,19,0));
 }
-.brand{display:flex;align-items:center;gap:8px;margin-right:auto;min-width:0}
-.brand .mark{font-size:20px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6))}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+/* 絵文字の ⛷ は端末ごとに絵が変わる（白黒の小さな記号になる端末もある）ので、線画の SVG にする */
+.brand .mark{width:22px;height:22px;flex:0 0 22px;color:var(--fg);filter:drop-shadow(0 2px 6px rgba(0,0,0,.6))}
+/* かんたん／くわしくはタイトルのすぐ右。種目・視点は右に寄せる */
+#mode-toggle{margin-right:auto}
 .brand .titles{display:flex;flex-direction:column;line-height:1.15;min-width:0}
 .brand strong{font-size:14px;letter-spacing:.01em}
 .brand small{font-size:11px;color:var(--fg-dim)}
@@ -88,7 +93,7 @@ body{
   background:var(--panel);border:1px solid var(--panel-b);backdrop-filter:blur(12px);
   box-shadow:var(--shadow);font-size:11px;
 }
-#hud .hud-phase{font-weight:800;color:var(--accent-2);white-space:nowrap;
+#hud .hud-phase{font-weight:800;color:var(--fg);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
 #hud .hud-item{display:flex;align-items:baseline;gap:3px;white-space:nowrap;flex:0 0 auto}
 #hud .hud-item i{font-style:normal;color:var(--fg-dim);font-size:9.5px}
@@ -151,18 +156,19 @@ input[type=range]::-moz-range-thumb{
 .toggles label:hover{color:var(--fg)}
 
 /* ---------- 右パネル ---------- */
-.phase{margin:0;font-size:17px;font-weight:800;letter-spacing:.02em;color:var(--accent-2)}
+.phase{margin:0;font-size:17px;font-weight:800;letter-spacing:.02em;color:var(--fg)}
 .phase-desc{margin:4px 0 0;font-size:11px;color:#cfdcec;line-height:1.5}
 #compass,#chart{width:100%;height:auto;display:block;border-radius:8px;background:rgba(255,255,255,.035)}
 .legend{display:flex;gap:9px;align-items:center;margin:6px 0 0;font-size:10px;color:var(--fg-dim);flex-wrap:wrap}
 .k{width:9px;height:3px;border-radius:2px;display:inline-block;margin-right:3px}
-.k-force{background:var(--grf)}.k-counter{background:var(--outer)}.k-incl{background:var(--accent-2)}
+.k-force{background:var(--grf)}.k-counter{background:var(--outer)}.k-incl{background:#b9a2f2}
 
 .readouts{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .ro{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:5px 7px}
 .ro span{display:block;font-size:9.5px;color:var(--fg-dim);letter-spacing:.02em}
-.ro b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:800}
+.ro b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:800;color:var(--fg)}
 .ro b i{font-style:normal;font-size:10px;font-weight:600;color:var(--fg-dim);margin-left:2px}
+.ro b i.pre{margin:0 3px 0 0}
 .ro.wide{grid-column:span 2}
 
 /* ---------- 骨盤の動き ---------- */
@@ -202,14 +208,24 @@ input[type=range]::-moz-range-thumb{
   display:grid;place-items:center;box-shadow:0 2px 12px rgba(76,195,255,.4);
 }
 .play:hover{filter:brightness(1.08)}
-#transport input[type=range]{flex:1}
+.play svg{width:16px;height:16px;display:block}
+/* 位相のつまみと、その下の 5 つの局面（押すとその局面へ飛ぶ） */
+.scrub{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding-top:3px}
+#transport input[type=range]{width:100%}
 .rate{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-dim);white-space:nowrap}
 .rate select{
   background:rgba(255,255,255,.07);color:var(--fg);border:1px solid var(--panel-b);
   border-radius:7px;padding:3px 5px;font:inherit;font-size:11px;cursor:pointer;
 }
-.ticks{position:absolute;left:57px;right:88px;bottom:5px;height:11px;pointer-events:none}
-.ticks i{position:absolute;transform:translateX(-50%);font-size:8.5px;font-style:normal;color:var(--fg-dim);white-space:nowrap}
+.ticks{display:flex;gap:3px;margin:0 6px}
+.ticks i{position:relative;flex:var(--w,1) 1 0;min-width:0;height:12px;cursor:pointer;font-style:normal}
+.ticks i::before{content:"";position:absolute;left:0;right:0;top:4px;height:3px;border-radius:2px;
+  background:rgba(255,255,255,.16);transition:background .15s}
+.ticks i:hover::before{background:rgba(255,255,255,.42)}
+/* いまの局面（ui.js が箱に data-on を付ける） */
+.ticks[data-on="0"] i:nth-child(1)::before,.ticks[data-on="1"] i:nth-child(2)::before,.ticks[data-on="2"] i:nth-child(3)::before,
+.ticks[data-on="3"] i:nth-child(4)::before,.ticks[data-on="4"] i:nth-child(5)::before{background:rgba(255,255,255,.78)}
+.ticks i b{display:none}
 
 /* ---------- モーダル ---------- */
 .modal{position:absolute;inset:0;z-index:40;display:grid;place-items:center;
@@ -264,7 +280,7 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
   #panel-left,#panel-right{
     left:6px;right:6px;width:auto;top:auto;
     bottom:calc(60px + env(safe-area-inset-bottom,0px));
-    max-height:min(52vh,400px);
+    max-height:min(44vh,360px);
   }
   .panel{
     transform:translateY(calc(100% + 90px));
@@ -278,9 +294,14 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
   .toggles{grid-template-columns:1fr 1fr 1fr}
   .help-grid{grid-template-columns:1fr}
   #transport{width:calc(100% - 12px);gap:7px;padding:7px 10px}
-  .ticks{display:none}
-  .readouts{grid-template-columns:1fr 1fr 1fr}
+  .readouts{grid-template-columns:1fr 1fr 1fr;gap:4px}
   .ro.wide{grid-column:span 3}
+  /* シートは画面の下 44 % まで。数値のタブがなるべくスクロールせずに収まるよう、枠を詰めて説明の小さな字は省く */
+  .ro{padding:3px 6px}
+  .ro span{font-size:9px;line-height:1.3}
+  .ro b{font-size:13px;line-height:1.3}
+  .ro-group{margin-top:3px}
+  .ro-group small{display:none}
   .lbl{font-size:10px;padding:1px 6px}
 }
 
@@ -289,7 +310,7 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
 .do-item{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:start}
 .do-num{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;
   font-size:11px;font-weight:800;color:#20160a;background:#ffc93c}
-.do-item:nth-child(n+2) .do-num{background:#ff9f1c}
+.do-item:nth-child(n+2) .do-num{background:#ffe49e}
 .do-text{font-size:12.5px;font-weight:700;line-height:1.35}
 .do-why{grid-column:2;font-size:10.5px;color:var(--fg-dim);line-height:1.4}
 .do-bar{grid-column:2;height:4px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden}
@@ -336,7 +357,7 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
 .ro.inp{border:1px solid rgba(76,195,255,.45);background:rgba(76,195,255,.06)}
 .ro.res{border:1px dashed rgba(185,162,242,.55);background:rgba(185,162,242,.05)}
 .ro.asm{border:1px dotted rgba(139,155,176,.6);background:rgba(255,255,255,.02)}
-.ro.asm b{color:#c4cfdd}
+.ro.asm b{color:var(--fg)}
 
 /* 狭い画面の常時表示バー */
 #hud .hud-item.inp i{color:var(--io-inp)}
@@ -364,7 +385,7 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
 #tour .close{position:static;margin-left:auto;font-size:20px;padding:0 2px}
 #tour h3{margin:2px 0 4px;font-size:14px;color:#fff}
 #tour p{margin:0;font-size:12px;color:#cfdcec;line-height:1.55}
-#tour p b{color:var(--accent-2)}
+#tour p b{color:#fff}
 .tour-actions{display:flex;gap:8px;margin-top:9px}
 .tour-do{appearance:none;border:0;flex:1;padding:8px 10px;border-radius:9px;cursor:pointer;
   background:var(--accent);color:#04131d;font:inherit;font-size:12.5px;font-weight:800;
@@ -389,4 +410,139 @@ kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);borde
   #lbl-key{bottom:calc(58px + env(safe-area-inset-bottom,0px))}
   body.tour-on #lbl-key{display:none}
   .block.input{margin-left:-4px;padding-left:6px}
+}
+
+/* ===========================================================
+   くわしく表示のパネル：折りたたみ（左）とタブ（右）
+   一度に全部を並べると左 914 px・右 1932 px になり、どちらも画面に収まらなかった。
+   =========================================================== */
+details.block>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
+  margin:0;padding:3px 0;font-size:11px;font-weight:800;letter-spacing:.09em;color:var(--fg-dim)}
+details.block>summary::-webkit-details-marker{display:none}
+details.block>summary::before{content:"";width:5px;height:5px;flex:0 0 5px;margin:0 2px 0 1px;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:rotate(-45deg);transition:transform .15s}
+details.block[open]>summary::before{transform:rotate(45deg)}
+details.block[open]>summary{margin-bottom:7px}
+details.block>summary:hover{color:var(--fg)}
+h3.sub{margin:8px 0 4px;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--fg-dim)}
+h3.sub:first-of-type{margin-top:2px}
+.block h2 .info{font-style:normal;margin-left:5px;cursor:help;font-weight:600;letter-spacing:0}
+
+/* 見え方：選手｜骨盤を透視｜X線（ラジオを区切りボタンの形に） */
+.look{display:flex;align-items:center;gap:2px;margin:0 0 9px;padding:3px;border-radius:999px;
+  background:rgba(255,255,255,.04);border:1px solid var(--panel-b)}
+.look-cap{font-size:10.5px;color:var(--fg-dim);padding:0 5px 0 7px;white-space:nowrap}
+.look label{flex:1 1 auto;display:flex;position:relative}
+.look input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.look span{flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--fg-dim);
+  padding:4px 6px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:.15s}
+.look span:hover{color:var(--fg)}
+.look input:checked+span{background:var(--accent);color:#04131d}
+.look input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.look[hidden]{display:none}
+
+/* 右パネルのタブ（いま／骨盤／数値／推移）。見ているタブだけ毎フレーム書き換える */
+#rp-tabs{position:sticky;top:0;z-index:2;display:flex;gap:2px;margin:8px 0 2px;padding:3px;
+  border-radius:999px;background:rgba(20,30,46,.96);border:1px solid var(--panel-b)}
+#rp-tabs button{flex:1;appearance:none;border:0;background:transparent;color:var(--fg-dim);
+  font:inherit;font-size:12px;font-weight:800;padding:5px 0;border-radius:999px;cursor:pointer;transition:.15s}
+#rp-tabs button:hover{color:var(--fg)}
+#rp-tabs button[aria-selected="true"]{background:var(--accent);color:#04131d}
+#panel-right section[data-tab]:not(.on){display:none}
+#panel-right section[data-tab]>.block:first-child{border-top:0;margin-top:0}
+
+/* 局面の名前（くわしく・広い画面だけ。11 px 以上で読める大きさに） */
+@media (min-width:821px){
+  body:not(.mode-simple) .ticks i{height:auto;padding-top:10px}
+  body:not(.mode-simple) .ticks i b{display:block;font-size:11px;font-weight:600;color:var(--fg-dim);
+    text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+  body:not(.mode-simple) .ticks[data-on="0"] i:nth-child(1) b,body:not(.mode-simple) .ticks[data-on="1"] i:nth-child(2) b,
+  body:not(.mode-simple) .ticks[data-on="2"] i:nth-child(3) b,body:not(.mode-simple) .ticks[data-on="3"] i:nth-child(4) b,
+  body:not(.mode-simple) .ticks[data-on="4"] i:nth-child(5) b{color:var(--fg)}
+  #lbl-key{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
+}
+
+/* ===========================================================
+   かんたん表示（既定）
+   画面に出すのは スキーヤー・黄色の指示 1 つ・下のカード・再生だけ。
+   パネル・HUD・速度の選択・シート切り替えはくわしく表示へ。
+   =========================================================== */
+body.mode-simple #panel-left,body.mode-simple #panel-right,body.mode-simple #hud,
+body.mode-simple #btn-sheet-ctrl,body.mode-simple #btn-sheet-data,body.mode-simple #btn-panels,
+body.mode-simple .rate,body.mode-simple .detail-only,body.mode-simple #lbl-key,
+body.mode-simple .seg small{display:none}
+body.mode-simple #transport{width:min(560px,calc(100% - 24px))}
+
+/* いま、やること（コーチのカード） */
+#coach{position:absolute;z-index:15;left:50%;transform:translateX(-50%);
+  bottom:calc(78px + env(safe-area-inset-bottom,0px));
+  width:min(560px,calc(100% - 24px));
+  display:none;grid-template-columns:1fr 112px;gap:2px 12px;align-items:center;
+  padding:10px 14px 11px;background:var(--panel);border:1px solid var(--panel-b);border-radius:14px;
+  box-shadow:var(--shadow);backdrop-filter:blur(12px);transition:opacity .2s linear}
+body.mode-simple #coach{display:grid}
+body.panels-hidden #coach{opacity:0;pointer-events:none}
+.coach-head{grid-column:1;display:flex;align-items:center;gap:9px;min-width:0}
+#coach-phase{font-size:12px;font-weight:700;color:var(--fg);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+#coach-dots{display:flex;gap:4px;flex:0 0 auto}
+#coach-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.18);transition:background .15s}
+#coach-dots[data-on="0"] i:nth-child(1),#coach-dots[data-on="1"] i:nth-child(2),#coach-dots[data-on="2"] i:nth-child(3),
+#coach-dots[data-on="3"] i:nth-child(4),#coach-dots[data-on="4"] i:nth-child(5){background:#fff}
+/* 指示は文節で折り返す（「キー／プ」のような切れ方をしない）。auto-phrase が使えない端末は keep-all
+   （句読点と括弧の前後だけで折る）。どちらでも長すぎてはみ出すときは anywhere で折る */
+#coach-cue{grid-column:1;margin:0;font-size:19px;font-weight:800;line-height:1.3;color:#ffc93c;
+  word-break:keep-all;overflow-wrap:anywhere;word-break:auto-phrase}
+#coach-cue.fast{color:var(--fg);font-size:16px}
+/* 「保つ」指示の印は見出しの行に置く（指示の文の後ろに付けると、広い画面でも印だけが 2 行目に落ちた） */
+#coach-keep{flex:0 0 auto;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:800;line-height:1.6;
+  color:#20160a;background:#ffc93c}
+#coach-keep[hidden]{display:none}
+#coach-sub{grid-column:1;margin:0;font-size:13px;font-weight:700;line-height:1.35;color:#ffe49e}
+#coach-sub[hidden]{display:none}
+#coach-why{grid-column:1;margin:0;font-size:12px;line-height:1.45;color:var(--fg-dim)}
+#coach-compass{grid-column:2;grid-row:1 / span 4;width:112px;height:68px;align-self:center}
+
+/* 再生の速さ：スロー ¼ ／実際の速さ */
+.speedseg{display:none;flex:0 0 auto;gap:2px;padding:3px;border-radius:999px;
+  background:rgba(12,20,32,.7);border:1px solid var(--panel-b)}
+body.mode-simple .speedseg{display:flex}
+.speedseg .seg{padding:5px 10px;font-size:11.5px;white-space:nowrap}
+
+/* 狭い画面のかんたん表示だけで使う視点の選択 */
+.viewsel{display:none;align-items:center;gap:5px;padding:2px 4px 2px 10px;border-radius:999px;
+  background:rgba(12,20,32,.7);border:1px solid var(--panel-b);font-size:11px;color:var(--fg-dim)}
+.viewsel select{appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--fg);
+  font:inherit;font-size:12px;font-weight:700;padding:5px 18px 5px 4px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,var(--fg-dim) 50%),linear-gradient(135deg,var(--fg-dim) 50%,transparent 50%);
+  background-position:calc(100% - 9px) 52%,calc(100% - 5px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+.viewsel select option{background:#111b2a;color:var(--fg)}
+
+/* 一人称：ゴーグル越しに見る（縁を暗くして、レンズに薄い色を付ける） */
+#fp-goggle{position:absolute;inset:0;pointer-events:none;display:none;overflow:hidden}
+body.view-first #fp-goggle{display:block}
+/* レンズの穴は大きめ。一人称で見えるもの（次の旗門）は画面の上のほうにあるので、
+   縁の黒は上のバーの下あたりまでにとどめる */
+#fp-goggle i{position:absolute;left:50%;top:51%;width:min(96%,1500px);height:88%;transform:translate(-50%,-50%);
+  border-radius:38% / 30%;background:rgba(255,170,70,.05);
+  box-shadow:0 0 0 200vmax rgba(10,14,20,.85),inset 0 0 46px 12px rgba(10,14,20,.45)}
+
+@media (max-width:820px){
+  /* かんたん表示の上のバーは 1 行：[印][かんたん|くわしく][視点 ▾][？] */
+  body.mode-simple #disc-group,body.mode-simple #view-group{display:none}
+  body.mode-simple .viewsel{display:flex}
+  body.mode-simple #topbar{padding-bottom:8px}
+
+  #coach{width:calc(100% - 12px);bottom:calc(66px + env(safe-area-inset-bottom,0px));
+    grid-template-columns:1fr 84px;gap:1px 8px;padding:8px 11px 9px;border-radius:13px}
+  #coach-cue{font-size:17px}
+  #coach-cue.fast{font-size:15px}
+  #coach-sub{font-size:12px}
+  #coach-why{font-size:11.5px}
+  #coach-compass{width:84px;height:60px}
+  .speedseg .seg{padding:5px 8px;font-size:11px}
+  /* ガイドのカードはコーチのカードの上に積む（ガイドの①が下のカードを指すので隠さない） */
+  body.mode-simple #tour{bottom:calc(72px + var(--coach-h,100px) + env(safe-area-inset-bottom,0px))}
+  #fp-goggle i{width:94%;height:80%;top:50%}
 }

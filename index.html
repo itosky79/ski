@@ -17,6 +17,8 @@
 <body>
 <div id="app">
   <canvas id="view"></canvas>
+  <!-- 一人称のゴーグルの枠（一人称のときだけ。操作は下の絵に通す） -->
+  <div id="fp-goggle" aria-hidden="true"><i></i></div>
   <div id="labels" aria-hidden="true"></div>
   <div id="lbl-key" hidden>
     <span class="kk inp">入力＝自分でつくる</span>
@@ -26,75 +28,111 @@
   <!-- ===== 上部バー ===== -->
   <header id="topbar">
     <div class="brand">
-      <span class="mark" aria-hidden="true">⛷</span>
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="15.6" cy="3.7" r="2.2" fill="currentColor" />
+        <path d="M6.4 8.6l5.4-1.5 2.3 3.3-3.3 2.9 2.4 3.9M11.8 7.1l-1.2 4.1" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M2.8 16.9l17.6 4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+      </svg>
       <span class="titles">
         <strong>外向・外傾 3Dトレーナー</strong>
-        <small>骨盤を中心に見るアルペンターン</small>
+        <small class="detail-only">骨盤を中心に見るアルペンターン</small>
       </span>
     </div>
 
-    <div class="topgroup" role="group" aria-label="種目">
+    <!-- かんたん（はじめての人）／くわしく（指導者・数値） -->
+    <div class="topgroup" id="mode-toggle" role="group" aria-label="表示の細かさ">
+      <button class="seg" data-mode="simple" aria-pressed="true" title="かんたん：滑りと「いま、やること」だけ（D で切り替え）">かんたん</button>
+      <button class="seg" data-mode="detail" aria-pressed="false" title="くわしく：数値・グラフ・表示の切り替え（D で切り替え）">くわしく</button>
+    </div>
+
+    <div class="topgroup" id="disc-group" role="group" aria-label="種目">
       <button class="seg" data-discipline="SL" aria-pressed="true">スラローム<small>SL</small></button>
       <button class="seg" data-discipline="GS" aria-pressed="false">大回転<small>GS</small></button>
     </div>
 
-    <div class="topgroup" role="group" aria-label="視点">
+    <div class="topgroup" id="view-group" role="group" aria-label="視点">
       <button class="seg" data-view="third" aria-pressed="true">三人称</button>
       <button class="seg" data-view="first" aria-pressed="false">一人称</button>
       <button class="seg" data-view="pelvis" aria-pressed="false">骨盤</button>
     </div>
+    <!-- 狭い画面のかんたん表示：視点は 1 つの選択にまとめて、上のバーを 1 行にする -->
+    <label class="viewsel" id="view-select">
+      <span>視点</span>
+      <select id="sel-view" aria-label="視点">
+        <option value="third">うしろから</option>
+        <option value="first">自分の目線</option>
+        <option value="pelvis">骨盤アップ</option>
+      </select>
+    </label>
 
     <div class="topgroup right">
       <button id="btn-sheet-ctrl" class="ghost only-narrow">操作</button>
       <button id="btn-sheet-data" class="ghost only-narrow">数値</button>
-      <button id="btn-help" class="ghost" title="使い方と用語（H）">？</button>
+      <button id="btn-help" class="ghost" title="使い方と用語（H）" aria-label="使い方と用語">？</button>
       <button id="btn-panels" class="ghost only-wide" title="パネル表示切替（Tab）">▤</button>
     </div>
   </header>
 
-  <!-- ===== 狭い画面用の常時表示バー ===== -->
+  <!-- ===== 狭い画面用の常時表示バー（くわしく表示のときだけ） ===== -->
   <div id="hud" aria-hidden="true">
     <span class="hud-phase">—</span>
     <span class="hud-item inp" title="入力（自分でつくる）"><i>外向</i><b id="hud-counter">—</b></span>
     <span class="hud-item res" title="結果（力学で決まる）"><i>内傾</i><b id="hud-incl">—</b></span>
-    <span class="hud-item res" title="結果（力学で決まる）"><i>荷重</i><b id="hud-load">—</b></span>
+    <span class="hud-item res" title="結果（力学で決まる）：雪から受ける力"><i>雪から</i><b id="hud-load">—</b></span>
   </div>
 
-  <!-- ===== 左パネル：操作 ===== -->
+  <!-- ===== 左パネル：操作（くわしく表示） ===== -->
   <aside id="panel-left" class="panel">
-    <section class="block">
-      <h2>カメラ</h2>
-      <div class="chips" id="camera-presets">
-        <button class="chip" data-cam="follow">追従</button>
-        <button class="chip" data-cam="front">正面</button>
-        <button class="chip" data-cam="side">真横</button>
-        <button class="chip" data-cam="top">真上</button>
-        <button class="chip" data-cam="behind">後方</button>
-        <button class="chip" data-cam="free">自由</button>
-      </div>
-      <p class="hint">ドラッグで回転／ホイールで拡大縮小／右ドラッグで平行移動</p>
-    </section>
-
-    <section class="block input">
-      <h2>レベル（滑走設定）<span class="tag inp">入力</span></h2>
+    <details class="block input" open>
+      <summary>お手本の滑り</summary>
       <div class="chips" id="level-presets">
-        <button class="chip" data-level="beginner">初級</button>
-        <button class="chip" data-level="intermediate">中級</button>
-        <button class="chip" data-level="racer">競技</button>
+        <button class="chip" data-level="beginner">ゆっくり・小さめ</button>
+        <button class="chip" data-level="intermediate">ふつう</button>
+        <button class="chip" data-level="racer">レーサー</button>
       </div>
-    </section>
+    </details>
 
-    <section class="block input">
-      <h2>姿勢パラメータ<span class="tag inp">入力</span></h2>
-      <p class="hint io-note">ここで決めるのは<b class="t-inp">自分でつくる量</b>だけです。
-        内傾角・エッジ角・雪からの力は<b class="t-res">結果</b>（力学で決まる）なので、
-        つまみはありません — 「数値」の紫の欄に出ます。</p>
+    <details class="block" id="blk-show" open>
+      <summary>表示</summary>
+      <div class="look" role="radiogroup" aria-label="見え方">
+        <span class="look-cap">見え方</span>
+        <label title="不透明なレーシングスーツ。骨は見せない"><input type="radio" name="look" id="look-racer" value="racer" /><span>選手</span></label>
+        <label title="スーツは不透明のまま、骨盤のまわりだけ透かして見せる（既定）"><input type="radio" name="look" id="look-window" value="window" checked /><span>骨盤を透視</span></label>
+        <label title="半透明の身体と骨格（筋肉を出すときもこれ）"><input type="radio" name="look" id="look-xray" value="xray" /><span>X線</span></label>
+      </div>
+      <div class="toggles">
+        <label><input type="checkbox" id="tg-moves" checked /> やることの矢印</label>
+        <label><input type="checkbox" id="tg-body" checked /> 身体</label>
+        <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
+        <label><input type="checkbox" id="tg-skeleton" checked /> 骨（X線のとき）</label>
+        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+      </div>
+    </details>
+
+    <details class="block" id="blk-physics">
+      <summary>力と角度・くらべる</summary>
+      <h3 class="sub">物理</h3>
+      <div class="toggles">
+        <label><input type="checkbox" id="tg-forces" /> 力のベクトル</label>
+        <label><input type="checkbox" id="tg-angles" /> 角度ガイド</label>
+        <label><input type="checkbox" id="tg-track" /> シュプール</label>
+      </div>
+      <h3 class="sub">くらべる</h3>
+      <div class="toggles">
+        <label><input type="checkbox" id="tg-ghost" /> 外向なしの人</label>
+        <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
+      </div>
+    </details>
+
+    <details class="block input">
+      <summary>姿勢をいじる（入力）</summary>
       <label class="slider">
-        <span>外向角（骨盤のひねり）<b id="out-counter">—</b></span>
+        <span>外向の大きさ（ターン中の最大）<b id="out-counter">—</b></span>
         <input type="range" id="rng-counter" min="0" max="45" step="1" />
       </label>
       <label class="slider">
-        <span>外傾角（腰の横曲げ）<b id="out-angulation">—</b></span>
+        <span>外傾の大きさ（最大）<b id="out-angulation">—</b></span>
         <input type="range" id="rng-angulation" min="0" max="60" step="1" />
       </label>
       <label class="slider">
@@ -105,10 +143,10 @@
         <span>斜度<b id="out-slope">—</b></span>
         <input type="range" id="rng-slope" min="8" max="35" step="1" />
       </label>
-    </section>
+    </details>
 
-    <section class="block input">
-      <h2>コースセット（FIS 準拠）<span class="tag inp">入力</span></h2>
+    <details class="block input">
+      <summary>コース（FIS 準拠）</summary>
       <label class="slider">
         <span>ポール間隔<b id="out-gate">—</b></span>
         <input type="range" id="rng-gate" min="6" max="30" step="0.5" />
@@ -118,87 +156,113 @@
         <input type="range" id="rng-offset" min="1" max="10" step="0.25" />
       </label>
       <p class="rule" id="fis-check">—</p>
-    </section>
+    </details>
 
-    <section class="block">
-      <h2>表示</h2>
-      <div class="toggles">
-        <label><input type="checkbox" id="tg-moves" checked /> 動作ガイド</label>
-        <label><input type="checkbox" id="tg-body" checked /> 身体（半透明）</label>
-        <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
-        <label><input type="checkbox" id="tg-skeleton" checked /> 骨格</label>
-        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
-        <label><input type="checkbox" id="tg-forces" /> 力のベクトル</label>
-        <label><input type="checkbox" id="tg-angles" /> 角度ガイド</label>
-        <label><input type="checkbox" id="tg-track" /> シュプール</label>
-        <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
-        <label><input type="checkbox" id="tg-ghost" /> 比較：外向なし</label>
+    <details class="block">
+      <summary>カメラ</summary>
+      <div class="chips" id="camera-presets">
+        <button class="chip" data-cam="follow">追従</button>
+        <button class="chip" data-cam="tv" title="遠くから長いレンズで（テレビ中継のような見え方）">中継</button>
+        <button class="chip" data-cam="front">正面</button>
+        <button class="chip" data-cam="side">真横</button>
+        <button class="chip" data-cam="top">真上</button>
+        <button class="chip" data-cam="behind">後方</button>
+        <button class="chip" data-cam="free">自由</button>
       </div>
-      <p class="hint">はじめは<b>動作ガイド・身体・骨盤</b>の 3 つだけ。
-        慣れたら力や角度を足していきます（一度に出すラベルは 4 つまで）。</p>
-    </section>
+      <p class="hint">ドラッグで回転／ホイールで拡大縮小／右ドラッグで平行移動</p>
+    </details>
   </aside>
 
-  <!-- ===== 右パネル：計測値と解説 ===== -->
+  <!-- ===== 右パネル：計測値と解説（くわしく表示・4 つのタブ） ===== -->
   <aside id="panel-right" class="panel">
-    <section class="block">
-      <h2>いまの局面</h2>
-      <p class="phase" id="phase-name">—</p>
-      <p class="phase-desc" id="phase-desc">—</p>
+    <nav id="rp-tabs" role="tablist" aria-label="右パネル">
+      <button role="tab" data-tab="now" aria-selected="true">いま</button>
+      <button role="tab" data-tab="pelvis" aria-selected="false">骨盤</button>
+      <button role="tab" data-tab="nums" aria-selected="false">数値</button>
+      <button role="tab" data-tab="trend" aria-selected="false">推移</button>
+    </nav>
+
+    <section data-tab="now" class="on" role="tabpanel">
+      <div class="block">
+        <h2>いまの局面</h2>
+        <p class="phase" id="phase-name">—</p>
+        <p class="phase-desc" id="phase-desc">—</p>
+      </div>
+      <div class="block" id="block-doing">
+        <h2>いま、やること<i class="info" title="3D の黄色い矢印が同じ動きを指します。姿勢の絵ではなく、モデルの変化（少し先の姿勢との差）から出しています。">ⓘ</i></h2>
+        <div class="doing" id="doing-list"></div>
+      </div>
+      <div class="block" id="block-muscles" hidden>
+        <h2>働いている筋（外力から計算）</h2>
+        <div class="muscles" id="muscle-list"></div>
+        <p class="hint" id="muscle-note">—</p>
+      </div>
     </section>
 
-    <section class="block" id="block-doing">
-      <h2>いま、やること</h2>
-      <div class="doing" id="doing-list"></div>
-      <p class="hint">3D の<b>黄色い矢印</b>が同じ動きを指します。
-        姿勢の絵ではなく、モデルの<b>変化</b>（少し先の姿勢との差）から出しています。</p>
+    <section data-tab="pelvis" role="tabpanel">
+      <div class="block">
+        <h2>骨盤の向き（真上から）</h2>
+        <canvas id="compass" width="260" height="150"></canvas>
+        <p class="hint">白＝スキーの進行方向／青＝骨盤の正面／橙＝肩の正面。開いた角度が<b>外向角</b>で、肩は骨盤の約2倍開きます。</p>
+      </div>
+      <div class="block">
+        <h2>骨盤まわりの動き</h2>
+        <div class="motions" id="pelvis-motions"></div>
+      </div>
+      <details class="block">
+        <summary>外脚の股関節（くわしく）</summary>
+        <div class="motions" id="hip-motions"></div>
+        <p class="hint">骨盤から見た大腿骨の向きです。<b>外向</b>は骨盤を外へ回すので、
+          外脚の股関節では<b>内旋</b>として現れます。</p>
+      </details>
     </section>
 
-    <section class="block">
-      <h2>骨盤の向き（真上から）</h2>
-      <canvas id="compass" width="260" height="150"></canvas>
-      <p class="hint">白＝スキーの進行方向／青＝骨盤の正面／橙＝肩の正面。開いた角度が<b>外向角</b>で、肩は骨盤の約2倍開きます。</p>
+    <section data-tab="nums" role="tabpanel">
+      <div class="block" id="block-readouts">
+        <div class="readouts" id="readouts"></div>
+      </div>
     </section>
 
-    <section class="block" id="block-readouts">
-      <h2>数値</h2>
-      <div class="readouts" id="readouts"></div>
-    </section>
-
-    <section class="block">
-      <h2>骨盤の動き</h2>
-      <div class="motions" id="pelvis-motions"></div>
-    </section>
-
-    <section class="block" id="block-muscles" hidden>
-      <h2>働いている筋（外力から計算）</h2>
-      <div class="muscles" id="muscle-list"></div>
-      <p class="hint" id="muscle-note">—</p>
-    </section>
-
-    <section class="block">
-      <h2>外脚の股関節（大腿骨の動き）</h2>
-      <div class="motions" id="hip-motions"></div>
-      <p class="hint">骨盤から見た大腿骨の向きです。<b>外向</b>は骨盤を外へ回すので、
-        外脚の股関節では<b>内旋</b>として現れます。</p>
-    </section>
-
-    <section class="block">
-      <h2>1ターンの推移</h2>
-      <canvas id="chart" width="260" height="130"></canvas>
-      <p class="legend">
-        <span class="k k-force"></span>外脚荷重
-        <span class="k k-counter"></span>外向角
-        <span class="k k-incl"></span>内傾角
-      </p>
+    <section data-tab="trend" role="tabpanel">
+      <div class="block">
+        <h2>1ターンの推移</h2>
+        <canvas id="chart" width="260" height="130"></canvas>
+        <p class="legend">
+          <span class="k k-force"></span>外脚荷重
+          <span class="k k-counter"></span>外向角
+          <span class="k k-incl"></span>内傾角
+        </p>
+      </div>
     </section>
   </aside>
+
+  <!-- ===== かんたん表示：いま、やること（コーチのカード） ===== -->
+  <section id="coach">
+    <div class="coach-head">
+      <span id="coach-phase">—</span>
+      <span id="coach-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span id="coach-keep" hidden title="この形を保ったまま（新しく動かすのではない）">キープ</span>
+    </div>
+    <p id="coach-cue" aria-live="polite">—</p>
+    <p id="coach-sub" hidden></p>
+    <p id="coach-why"></p>
+    <canvas id="coach-compass" width="112" height="68" role="img"
+      aria-label="真上から見た向き。白＝スキー、青＝骨盤、その間の赤が外向角"
+      title="真上から見た向き：白＝スキー、青＝骨盤、その間の赤＝外向角"></canvas>
+  </section>
 
   <!-- ===== 下部：再生 ===== -->
   <footer id="transport">
-    <button id="btn-play" class="play" aria-label="再生／一時停止">❚❚</button>
-    <input type="range" id="rng-phase" min="0" max="1000" step="1" value="0" aria-label="ターン位相" />
-    <div class="ticks" id="phase-ticks" aria-hidden="true"></div>
+    <button id="btn-play" class="play" aria-label="一時停止"></button>
+    <div class="scrub">
+      <input type="range" id="rng-phase" min="0" max="1000" step="1" value="0" aria-label="ターン位相" />
+      <div class="ticks" id="phase-ticks"></div>
+    </div>
+    <!-- かんたん表示の速さ：スロー（もう一度押すとさらにゆっくり）／実際の速さ -->
+    <div class="speedseg" id="speed-seg" role="group" aria-label="再生の速さ">
+      <button class="seg" id="btn-slow" aria-pressed="true" title="スロー（もう一度押すと、さらにゆっくり）">スロー ¼</button>
+      <button class="seg" id="btn-real" aria-pressed="false" title="本物の滑りと同じ速さ">実際の速さ</button>
+    </div>
     <label class="rate">
       速度
       <select id="sel-rate">
@@ -237,23 +301,29 @@
           <p>骨盤・上体を<b>ターンの外側</b>へ向けること。スキーの進行方向と骨盤の正面がつくる角度が<b>外向角</b>です。山回りで大きく、切り替えでほどけます。</p>
           <h3>外傾（がいけい）</h3>
           <p>腰から上を<b>外側へ横に曲げる</b>こと。内傾（体全体の傾き）に外傾を足すと、身体を倒しすぎずにエッジ角を増やせます。</p>
-          <h3>動作ガイド（黄色い矢印）</h3>
-          <p>「いま何をするか」を示します。姿勢の絵ではなく、<b>少し先の姿勢との差</b>から計算しているので、
-            矢印が出ているところが<b>いま動かしている場所</b>です。右のパネルに上位 3 つが言葉で出ます。</p>
+          <h3>いま、やること（黄色い矢印）</h3>
+          <p>黄色は「いま、これをする」だけに使います。<b>かんたん</b>では局面ごとに決めた指示を 1 つ、下のカードと矢印に出します。
+            <b>くわしく</b>では、<b>少し先の姿勢との差</b>から計算した動きを速い順に 3 つ、右の「いま」に出します。</p>
           <h3>内傾（ないけい）</h3>
           <p>遠心力と重力の合力の向きに身体が倒れる角度。<b>力学で決まる</b>ので自分では自由に選べません。</p>
           <h3>入力と結果（色の約束）</h3>
-          <p><span class="kk inp">入力</span> 自分でつくる量（外向角・外傾角・速度）。左のつまみで変えられます。<br>
+          <p><span class="kk inp">入力</span> 自分でつくる量（外向・外傾の大きさ・速度）。くわしく表示の「姿勢をいじる」で変えられます。<br>
             <span class="kk res">結果</span> 力学で決まる量（内傾角・エッジ角・雪からの力）。つまみはなく、入力を変えると<b>勝手に</b>変わります。<br>
-            <span class="kk asm">想定</span> レベルごとに置いた仮定（外脚の荷重配分・圧の前後位置）。</p>
+            <span class="kk asm">想定</span> お手本の滑りごとに置いた仮定（外脚の荷重配分・圧の前後位置）。</p>
         </div>
         <div>
           <h3>骨盤の色分け</h3>
           <ul class="bonelist" id="bone-legend"></ul>
+          <h3>見え方（くわしく →「表示」）</h3>
+          <p><b>選手</b> 不透明なスーツだけ。<b>骨盤を透視</b>（既定）スーツの骨盤のまわりだけを透かす。
+            <b>X線</b> 半透明の身体と骨格。筋肉を出すと X線 に切り替わります。</p>
+          <h3>かんたん／くわしく</h3>
+          <p>はじめは<b>かんたん</b>（滑りと「いま、やること」だけ）。指導者は上の「くわしく」か <kbd>D</kbd> キー、
+            または URL に <code>?mode=detail</code> を付けて開くと、数値・グラフ・表示の切り替えが出ます。選んだほうを次回も使います。</p>
           <h3>はじめのガイド</h3>
           <p><button class="ghost" id="btn-tour-again">はじめのガイドをもう一度</button></p>
           <h3>キーボード（操作）</h3>
-          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>三人称 <kbd>2</kbd>一人称 <kbd>3</kbd>骨盤　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ　<kbd>Esc</kbd> 閉じる</p>
+          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>うしろから <kbd>2</kbd>自分の目線 <kbd>3</kbd>骨盤アップ　<kbd>D</kbd> かんたん/くわしく　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ　<kbd>Esc</kbd> 閉じる</p>
         </div>
       </div>
       <p class="sources">数値の出典：FIS International Ski Competition Rules (ICR) 801/901条、FIS Specifications for Alpine Competition Equipment 2024/25、身体寸法は Drillis &amp; Contini (1966) / Winter (2009)。詳細は <code>docs/REFERENCES.md</code>。</p>
