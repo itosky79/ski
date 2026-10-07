@@ -18,9 +18,16 @@
  *
  * ■ 寸法
  *   身長 1.75 m を基準にした実測的な値（寛骨の高さ約 21 cm、上前腸骨棘幅約 24 cm）。
+ *
+ * ■ 配色（setPalette）
+ *   'anatomy' : 部位ごとの 7 色（くわしく表示・骨盤ビュー）。
+ *   'simple'  : かんたん表示。外側の寛骨はぜんぶ赤、内側はぜんぶ緑、仙骨は骨の色、
+ *               ASIS を結ぶ線（骨盤の正面）は白。ターンの外と内だけを見分ける。
+ *   色の表は constants.js の PELVIS_PALETTES。ターンが切り替わるたびに setOuterSide が
+ *   左右を塗り替えるので、配色はそこでも同じ表から塗る。
  */
 import * as THREE from 'three';
-import { BONE_COLORS } from './constants.js';
+import { BONE_COLORS, PELVIS_PALETTES } from './constants.js';
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -322,11 +329,12 @@ export function createPelvis(height = 1.75) {
   const W = 0.092 * S;          // 股関節中心の左右半幅
   const HIP = V3(W, -0.040 * S, 0.004 * S);   // 右股関節中心（＝寛骨臼の中心）
 
+  let palette = PELVIS_PALETTES.anatomy;
+  let paletteName = 'anatomy';
+  // 頂点カラーを塗るときの作業用（配色の切り替えのたびに作らない）
   const colors = {
-    ilium: new THREE.Color(BONE_COLORS.iliumOuter.hex),
-    iliumIn: new THREE.Color(BONE_COLORS.iliumInner.hex),
-    ischium: new THREE.Color(BONE_COLORS.ischium.hex),
-    pubis: new THREE.Color(BONE_COLORS.pubis.hex),
+    outer: { ilium: new THREE.Color(), ischium: new THREE.Color(), pubis: new THREE.Color() },
+    inner: { ilium: new THREE.Color(), ischium: new THREE.Color(), pubis: new THREE.Color() },
   };
 
   const mats = {
@@ -339,9 +347,12 @@ export function createPelvis(height = 1.75) {
       emissive: 0x1c2330, emissiveIntensity: 1,
     }),
     sacrum: boneMat(BONE_COLORS.sacrum.hex, { side: THREE.DoubleSide }),
-    sacrumDark: boneMat(0xb07d00, { roughness: 0.7 }),
+    sacrumDark: boneMat(0xa98a6a, { roughness: 0.7 }),
     crestR: boneMat(BONE_COLORS.iliumOuter.hex),
     crestL: boneMat(BONE_COLORS.iliumInner.hex),
+    // 坐骨棘と恥骨結節の小さな球（左右で色が変わるので左右別）
+    ischSpineR: boneMat(BONE_COLORS.ischium.hex), ischSpineL: boneMat(BONE_COLORS.ischium.hex),
+    pubTubR: boneMat(BONE_COLORS.pubis.hex), pubTubL: boneMat(BONE_COLORS.pubis.hex),
     acetabulum: boneMat(0xb4c2d4, { roughness: 0.55, side: THREE.DoubleSide,
       transparent: true, opacity: 0.55, depthWrite: false }),
     asis: new THREE.MeshStandardMaterial({
@@ -391,7 +402,7 @@ export function createPelvis(height = 1.75) {
     /* 坐骨棘（骨盤の内側に突き出す小さな棘） */
     const spineLM = innominateLandmark('ischial_spine', S);
     const ischialSpine = new THREE.Mesh(
-      new THREE.SphereGeometry(0.010 * S, 12, 10), mats.ischium);
+      new THREE.SphereGeometry(0.010 * S, 12, 10), side > 0 ? mats.ischSpineL : mats.ischSpineR);
     ischialSpine.scale.set(1, 1.3, 0.7);
     ischialSpine.position.set(side * (W + spineLM.x - 0.004 * S), HIP.y + spineLM.y, HIP.z + spineLM.z);
     group.add(ischialSpine);
@@ -399,7 +410,7 @@ export function createPelvis(height = 1.75) {
     /* 恥骨結節（下腹部で触れる出っぱり） */
     const tubLM = innominateLandmark('pubic_tubercle', S);
     const pubicTub = new THREE.Mesh(
-      new THREE.SphereGeometry(0.009 * S, 12, 10), mats.pubis);
+      new THREE.SphereGeometry(0.009 * S, 12, 10), side > 0 ? mats.pubTubL : mats.pubTubR);
     pubicTub.position.set(side * (W + tubLM.x), HIP.y + tubLM.y, HIP.z + tubLM.z);
     group.add(pubicTub);
 
@@ -455,9 +466,12 @@ export function createPelvis(height = 1.75) {
   /* ---- ASIS を結ぶ線（骨盤の正面を示す基準線） ---- */
   const asisLM = innominateLandmark('ASIS', S);
   const asisY = HIP.y + asisLM.y, asisZ = HIP.z + asisLM.z;
+  // 線と矢印の材質は setOpacity の対象にしない（いままでどおり常にくっきり出す）
+  const lineMats = {
+    asisLine: new THREE.MeshBasicMaterial({ color: BONE_COLORS.asis.hex, transparent: true, opacity: 0.9 }),
+  };
   const asisLine = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.0038 * S, 0.0038 * S, (W + asisLM.x) * 2, 8),
-    new THREE.MeshBasicMaterial({ color: BONE_COLORS.asis.hex, transparent: true, opacity: 0.9 }));
+    new THREE.CylinderGeometry(0.0038 * S, 0.0038 * S, (W + asisLM.x) * 2, 8), lineMats.asisLine);
   asisLine.rotation.z = Math.PI / 2;
   asisLine.position.set(0, asisY, asisZ);
   group.add(asisLine);
@@ -465,6 +479,7 @@ export function createPelvis(height = 1.75) {
   /* ---- 骨盤の正面を示す矢印 ---- */
   const facing = new THREE.Group();
   const arrowMat = new THREE.MeshBasicMaterial({ color: 0x4cc3ff });
+  lineMats.facing = arrowMat;
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0035 * S, 0.0035 * S, 0.15 * S, 10), arrowMat);
   shaft.position.set(0, 0, 0.145 * S); shaft.rotation.x = Math.PI / 2;
   const tip = new THREE.Mesh(new THREE.ConeGeometry(0.012 * S, 0.042 * S, 14), arrowMat);
@@ -485,22 +500,38 @@ export function createPelvis(height = 1.75) {
     { key: 'foramen', name: '閉鎖孔', pos: V3(W * 0.62, HIP.y - 0.050 * S, HIP.z + 0.022 * S) },
   ];
 
-  /* 初期配色 */
+  /* 配色：左右（どちらが外側か）と、いまの配色表から塗る */
+  const setBone = (m, hex, glow = 0.10) => {
+    m.color.set(hex);
+    if (m.emissive) m.emissive.copy(m.color).multiplyScalar(glow);
+  };
   const applyColors = (outerIsRight) => {
-    mats.crestR.color.set(outerIsRight ? BONE_COLORS.iliumOuter.hex : BONE_COLORS.iliumInner.hex);
-    mats.crestL.color.set(outerIsRight ? BONE_COLORS.iliumInner.hex : BONE_COLORS.iliumOuter.hex);
-    mats.crestR.emissive.copy(mats.crestR.color).multiplyScalar(0.10);
-    mats.crestL.emissive.copy(mats.crestL.color).multiplyScalar(0.10);
-    paintRegions(geos.R, {
-      ilium: outerIsRight ? colors.ilium : colors.iliumIn,
-      ischium: colors.ischium, pubis: colors.pubis,
-    });
-    paintRegions(geos.L, {
-      ilium: outerIsRight ? colors.iliumIn : colors.ilium,
-      ischium: colors.ischium, pubis: colors.pubis,
-    });
+    const P = palette;
+    colors.outer.ilium.set(P.iliumOuter); colors.inner.ilium.set(P.iliumInner);
+    colors.outer.ischium.set(P.ischiumOuter); colors.inner.ischium.set(P.ischiumInner);
+    colors.outer.pubis.set(P.pubisOuter); colors.inner.pubis.set(P.pubisInner);
+    const R = outerIsRight ? 'outer' : 'inner', L = outerIsRight ? 'inner' : 'outer';
+    setBone(mats.crestR, P[outerIsRight ? 'iliumOuter' : 'iliumInner']);
+    setBone(mats.crestL, P[outerIsRight ? 'iliumInner' : 'iliumOuter']);
+    setBone(mats.ischSpineR, P[R === 'outer' ? 'ischiumOuter' : 'ischiumInner']);
+    setBone(mats.ischSpineL, P[L === 'outer' ? 'ischiumOuter' : 'ischiumInner']);
+    setBone(mats.pubTubR, P[R === 'outer' ? 'pubisOuter' : 'pubisInner']);
+    setBone(mats.pubTubL, P[L === 'outer' ? 'pubisOuter' : 'pubisInner']);
+    paintRegions(geos.R, colors[R]);
+    paintRegions(geos.L, colors[L]);
+  };
+  /* 左右に関係しない部位（仙骨・ASIS・正面の矢印） */
+  const applyFixed = () => {
+    const P = palette;
+    setBone(mats.sacrum, P.sacrum);
+    setBone(mats.sacrumDark, P.sacrumDark);
+    setBone(mats.asis, P.asis, 0.5);
+    lineMats.asisLine.color.set(P.asisLine);
+    facing.visible = P.facing !== null && P.facing !== undefined;
+    if (facing.visible) lineMats.facing.color.set(P.facing);
   };
   let lastOuter = null;
+  applyFixed();
   applyColors(true); lastOuter = true;
 
   return {
@@ -511,6 +542,23 @@ export function createPelvis(height = 1.75) {
       if (outerIsRight === lastOuter) return;
       lastOuter = outerIsRight;
       applyColors(outerIsRight);
+    },
+
+    /** 配色を切り替える：'simple'（外＝赤・内＝緑・正面＝白）| 'anatomy'（部位ごとの 7 色） */
+    setPalette(mode) {
+      const name = PELVIS_PALETTES[mode] ? mode : 'anatomy';
+      if (name === paletteName) return;
+      paletteName = name;
+      palette = PELVIS_PALETTES[name];
+      applyFixed();
+      applyColors(lastOuter);
+    },
+    get palette() { return paletteName; },
+
+    /** 凡例（ヘルプ用）：[{ hex, name, note }]。mode を省くといまの配色 */
+    legend(mode = paletteName) {
+      const P = PELVIS_PALETTES[mode] ?? PELVIS_PALETTES.anatomy;
+      return P.legend.map((e) => ({ ...e }));
     },
 
     /** ラベルのアンカーをワールド座標で返す */

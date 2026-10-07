@@ -56,8 +56,10 @@ export const SEGMENT_MASS = {
 /* ============================================================
  * 骨盤の色分け — 指導用の凡例と一致させること
  * ============================================================ */
+/* 黄色は「いま、これをする」（動作ガイド）だけに使う約束なので、仙骨は骨の色（黄土）にする。
+ * 以前は 0xffb703 の黄色で、ガイドの黄色い矢印と重なると骨盤が黄色い塊に見えていた。 */
 export const BONE_COLORS = {
-  sacrum:      { hex: 0xffb703, name: '仙骨',        note: '背骨の土台。ここが向いた方向＝骨盤の向き' },
+  sacrum:      { hex: 0xd9b38c, name: '仙骨',        note: '背骨の土台。ここが向いた方向＝骨盤の向き' },
   iliumOuter:  { hex: 0xff6b57, name: '腸骨（外側）', note: 'ターン外側の腸骨。外向で前に出る' },
   iliumInner:  { hex: 0x59d9a4, name: '腸骨（内側）', note: 'ターン内側の腸骨。引けると外向が崩れる' },
   ischium:     { hex: 0x9b8cff, name: '坐骨',        note: '座面。後傾すると坐骨が後ろへ落ちる' },
@@ -65,6 +67,46 @@ export const BONE_COLORS = {
   femurHead:   { hex: 0xffffff, name: '大腿骨頭',    note: '股関節の球。ここで外傾を作る' },
   asis:        { hex: 0xff2d78, name: '上前腸骨棘',  note: '腰骨の出っぱり。左右を結ぶ線が骨盤の正面' },
   spine:       { hex: 0xd8e4f2, name: '脊柱・その他', note: '' },
+};
+
+/* ============================================================
+ * 骨盤の配色（pelvis.js の setPalette が使う）
+ *   simple  : かんたん表示。外側の寛骨はぜんぶ赤、内側はぜんぶ緑、仙骨は骨の色、
+ *             左右の ASIS を結ぶ線（＝骨盤の正面）は白。<b>見分けるのは 3 色だけ</b>。
+ *             7 色の解剖の色分けは、ターンの外と内を見分けるには多すぎる。
+ *   anatomy : くわしく表示・骨盤ビュー。部位ごとの 7 色（BONE_COLORS と同じ）。
+ * 色の意味はほかの表示と合わせてある：赤＝外側、緑＝内側、白＝基準の向き、
+ * 黄色は使わない（動作ガイド専用）。
+ * legend は凡例（ヘルプ）に出す順。ここに無い部位は凡例に出さない。
+ * ============================================================ */
+const BONE = 0xd9b38c;          // 骨の色（仙骨・目立たせない部位）
+export const PELVIS_PALETTES = {
+  simple: {
+    iliumOuter: BONE_COLORS.iliumOuter.hex, iliumInner: BONE_COLORS.iliumInner.hex,
+    ischiumOuter: BONE_COLORS.iliumOuter.hex, ischiumInner: BONE_COLORS.iliumInner.hex,
+    pubisOuter: BONE_COLORS.iliumOuter.hex, pubisInner: BONE_COLORS.iliumInner.hex,
+    sacrum: BONE, sacrumDark: 0xa98a6a,
+    asis: 0xffffff, asisLine: 0xffffff,
+    facing: null,               // 骨盤の正面の矢印は出さない（正面は白い線で示す）
+    legend: [
+      { hex: BONE_COLORS.iliumOuter.hex, name: '外側の腰骨',
+        note: 'ターンの外側の寛骨。外向で前に出る' },
+      { hex: BONE_COLORS.iliumInner.hex, name: '内側の腰骨',
+        note: 'ターンの内側の寛骨。引けると外向が崩れる' },
+      { hex: 0xffffff, name: '骨盤の正面',
+        note: '左右の腰骨の出っぱり（上前腸骨棘）を結ぶ線。この線の向きが骨盤の向き' },
+    ],
+  },
+  anatomy: {
+    iliumOuter: BONE_COLORS.iliumOuter.hex, iliumInner: BONE_COLORS.iliumInner.hex,
+    ischiumOuter: BONE_COLORS.ischium.hex, ischiumInner: BONE_COLORS.ischium.hex,
+    pubisOuter: BONE_COLORS.pubis.hex, pubisInner: BONE_COLORS.pubis.hex,
+    sacrum: BONE_COLORS.sacrum.hex, sacrumDark: 0xa98a6a,
+    asis: BONE_COLORS.asis.hex, asisLine: BONE_COLORS.asis.hex,
+    facing: 0x4cc3ff,           // 青＝骨盤の向き（角度ガイドの矢印・コンパスと同じ）
+    legend: Object.values(BONE_COLORS).filter((v) => v.name)
+      .map((v) => ({ hex: v.hex, name: v.name, note: v.note })),
+  },
 };
 
 /* ============================================================
@@ -146,40 +188,69 @@ export const DISCIPLINES = {
   },
 };
 
-/* レベル別プリセット（初心者指導用） */
+/* お手本の滑りのプリセット（初心者指導用）。
+ * 「初級・中級」だと見る人が<b>自分の</b>レベルを選ぶものと取り違えるので、
+ * お手本の滑りの速さ・大きさで呼ぶ。キー（data-level）は変えない。 */
 export const LEVELS = {
-  beginner:     { label: '初級', speedScale: 0.45, counterScale: 0.55, angulationScale: 0.6 },
-  intermediate: { label: '中級', speedScale: 0.72, counterScale: 0.8,  angulationScale: 0.82 },
-  racer:        { label: '競技', speedScale: 1.0,  counterScale: 1.0,  angulationScale: 1.0 },
+  beginner:     { label: 'ゆっくり・小さめ', speedScale: 0.45, counterScale: 0.55, angulationScale: 0.6 },
+  intermediate: { label: 'ふつう',           speedScale: 0.72, counterScale: 0.8,  angulationScale: 0.82 },
+  racer:        { label: 'レーサー',         speedScale: 1.0,  counterScale: 1.0,  angulationScale: 1.0 },
 };
 
-/* ターンの局面（位相 0..1、0 = 切り替え） */
+/* ターンの局面（位相 0..1、0 = 切り替え）
+ *
+ * cue：かんたん表示の「いま、やること」。局面ごとに 1 つだけ決めておく。
+ *   動作ガイドの「くわしく」は変化の速さの順に並べるので、<b>保つ</b>動き（外向を保つ等）は
+ *   速さ 0 になって決して 1 位に来ない。山回りで「外傾をほどく」と出ていたのはそのため。
+ *   そこで初心者向けには、局面ごとの指示を表にして固定する。
+ *     move : 矢印を出す動作（motion.js の MOVES の key、または 'cross'＝次の内側へ）
+ *     sign : +1 増やす向き／−1 減らす向き（矢印の向き）
+ *     hold : true なら「保つ」指示（矢印の大きさを変えず、キープの印を付ける）
+ *     text : カードに出す一文   short : 3D の吹き出しに出す短い言い方
+ *     why  : なぜそうするか（MOVES の why と同じ文。cross だけはこの表の desc から）
+ *     block: true なら SL のポール処理の一行を添える（文言は motion.js の BLOCK 表）
+ *   文言はすべて下の desc の言い方から取っている。指導者が言い方を変えたいときはここだけ直す。 */
 export const PHASES = [
   {
     from: 0.00, to: 0.12, name: '切り替え',
     desc: '両スキーがフラットになる瞬間。骨盤も肩もまだ前のターンの向きに残っているので、'
       + '新しいターンから見た外向角は<b>マイナス</b>です。ここから身体がスキーを越えて次の内側へ移り、'
       + '荷重は左右 50:50。トップの前後差もこの瞬間にそろいます。',
+    cue: { move: 'cross', sign: 1, hold: false,
+      text: '体をスキーの上から次の内側へ', short: '次の内側へ',
+      why: '身体がスキーを越えて次の内側へ移る。荷重は左右 50:50 から始まる。' },
   },
   {
     from: 0.12, to: 0.38, name: '谷回り（前半）',
     desc: 'スキーが身体の下を回り込んでくるので、外向角はマイナスから 0 へ戻っていきます。'
       + '上体は谷を向いたまま待つのが仕事。外脚への荷重が 50 % から 80 % へ増え、エッジ角も立ち上がります。',
+    cue: { move: 'share', sign: 1, hold: false,
+      text: '上体は谷へ向けたまま、外スキーに乗っていく', short: '外スキーへ',
+      why: '外脚が仕事をする。内脚は次のターンの準備。' },
   },
   {
     from: 0.38, to: 0.62, name: 'フォールライン',
     desc: 'スキーが最大傾斜線を向き、骨盤・肩とも<b>ほぼ正対</b>（外向角 ≒ 0）。'
       + '回転半径が最小・荷重が最大になります。外傾で上体を起こし、外脚に乗り切る局面です。',
+    cue: { move: 'fold', sign: 1, hold: true, block: true,
+      text: '外脚の付け根を折って上体を起こす（外傾）', short: '腰を折る',
+      why: '身体を倒さずにエッジ角だけ足せるのは、腰を折ったぶんだけ。' },
   },
   {
     from: 0.62, to: 0.88, name: '山回り（後半）',
     desc: '外向角が増えていく局面。脚がさらに回るのに上体は谷を向き続けるので、'
       + '<b>骨盤より肩のほうが約 2 倍</b>大きく開きます。内スキーにも乗り始め、荷重配分は 80:20 から 60:40 へ。',
+    cue: { move: 'pelvis', sign: 1, hold: true,
+      text: '骨盤は外へ向けたまま（外向キープ）', short: '骨盤は外へ',
+      why: 'スキーだけが回って上体は谷に残る。その差が外向角。' },
   },
   {
     from: 0.88, to: 1.00, name: '解放（切り替えへ）',
     desc: '外脚を曲げて圧を抜き、身体がスキーを越えて次のターンの内側へ移動します。'
       + '外向を保ったまま解放するのがポイント。エッジが寝るとトップの前後差も自然に消えます。',
+    cue: { move: 'leg', sign: -1, hold: false,
+      text: '外脚を曲げて圧を抜く（外向は保ったまま）', short: '圧を抜く',
+      why: '伸ばせば圧が増え、曲げれば抜ける。切り替えは「抜く」から始まる。' },
   },
 ];
 
