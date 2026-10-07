@@ -20,6 +20,10 @@ import { computeMuscleLoad, applyMuscleActivation } from './biomech.js';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 /* 椎骨に分散した側屈が「腰→肩の線」に出てくる割合の逆数（実測で調整） */
 const SPINE_LAT_GAIN = 2.4;
+/* 骨盤の前傾 [deg]（斜面法線から前へ）：切り替えで浅く、荷重が乗るほど深く */
+const PELVIS_TILT0 = 10, PELVIS_TILT1 = 18;
+/* 骨盤の上での上体の前傾 [deg] と、骨盤の前傾を打ち消す割合 */
+const LUMBAR0 = 6, LUMBAR1 = 10, LUMBAR_COMP = 0.80;
 /* 骨盤から見た仙骨の前傾（torso.js と同じ値） */
 const SACRAL_SLOPE = 28.6 * Math.PI / 180;
 const rad = (d) => d * Math.PI / 180;
@@ -340,6 +344,30 @@ export function createSkier(opts = {}) {
     const right = new THREE.Vector3().crossVectors(fwd, pelvisUp).normalize();
     // three.js のオブジェクトは +Z を向くので、右手系の基底は（左, 上, 前）になる
     const left = right.clone().negate();
+
+    /* --- 骨盤の前傾＝股関節の屈曲 ---
+     * 以前は前傾を<b>骨盤の上（腰椎）</b>で作っていたので、上体は前に倒れているのに
+     * 骨盤そのものは 1 ターン中ずっと −4〜−16° <b>後ろへ倒れていた</b>。
+     * 「腰が引けた」姿勢で、初心者が真っ先に直される形そのもの。
+     * 骨盤を見せる教材でこれを見せるわけにはいかない。
+     *
+     * 実際の前傾は、骨盤ごと大腿骨の上で前へ倒す（＝股関節の屈曲）。
+     * 背骨は骨盤に乗ったまま、ほぼまっすぐ。
+     * 左右軸まわりに回すので、外向（骨盤の向き）は変わらない。 */
+    /* 狙いは「斜面に対して骨盤が何度前へ倒れているか」で決める。
+     * 脚の線の前後の傾きは減速の強さで変わる（SL は後ろへ −20°、GS は −14° 程度）ので、
+     * 脚に対して一定量倒すと種目によって骨盤の向きがばらつく。 */
+    const tiltOf = () => Math.atan2(pelvisUp.dot(s.tangent), pelvisUp.dot(s.normal));
+    const tiltWant = rad(PELVIS_TILT0 + PELVIS_TILT1 * s.loadNorm);
+    // 骨盤は内傾しているので、左右軸まわりの回転は前後の傾きに 1:1 では効かない。
+    // 1 回回して残りをもう 1 回回す（2 回でほぼ一致する）。
+    let pelvisTilt = 0;
+    for (let k = 0; k < 2; k++) {
+      const d = tiltWant - tiltOf();
+      pelvisUp.applyAxisAngle(left, d);
+      fwd.applyAxisAngle(left, d);
+      pelvisTilt += d;
+    }
     const pelvisM = new THREE.Matrix4().makeBasis(left, pelvisUp, fwd);
 
     const pelvisPos = s.hip.clone();
@@ -441,9 +469,9 @@ export function createSkier(opts = {}) {
       + rad(3.0) * blockNow)
       * (right.dot(s.outward) > 0 ? -1 : 1);
     /* 前傾は「背中を丸める」のではなく「股関節で折る」。
-     * 競技者の背中は意外と真っ直ぐで、前傾のほとんどは股関節で作っている。
-     * 荷重が高いほど深く折り、背骨自身の屈曲は控えめに残す。 */
-    const hipFlexSag = rad(6 + 10 * s.loadNorm);
+     * 前傾の大半は骨盤ごと倒した（上の pelvisTilt）ので、骨盤の上では
+     * そのぶんを戻して背中をまっすぐに保つ（腰を丸めない）。 */
+    const hipFlexSag = rad(LUMBAR0 + LUMBAR1 * s.loadNorm) - LUMBAR_COMP * pelvisTilt;
     torso.setHipFlex(hipFlexSag);
     const spineFlex = rad(5 + 8 * s.loadNorm);
 
@@ -466,7 +494,8 @@ export function createSkier(opts = {}) {
       ? THREE.MathUtils.clamp((targetLat - lat0) / resp, -rad(40), rad(40))
       : spineLateral;
     torso.update(spineLateralUsed, spineAxial, spineFlex);
-    state.spine = { lateral: spineLateralUsed, axial: spineAxial, flex: spineFlex, hipFlex: hipFlexSag };
+    state.spine = { lateral: spineLateralUsed, axial: spineAxial, flex: spineFlex,
+      hipFlex: hipFlexSag, pelvisTilt };
 
     /* 体幹から出てくるフレーム */
     const chestPos = new THREE.Vector3();

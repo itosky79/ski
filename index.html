@@ -18,6 +18,10 @@
 <div id="app">
   <canvas id="view"></canvas>
   <div id="labels" aria-hidden="true"></div>
+  <div id="lbl-key" hidden>
+    <span class="kk inp">入力＝自分でつくる</span>
+    <span class="kk res">結果＝力学で決まる</span>
+  </div>
 
   <!-- ===== 上部バー ===== -->
   <header id="topbar">
@@ -51,9 +55,9 @@
   <!-- ===== 狭い画面用の常時表示バー ===== -->
   <div id="hud" aria-hidden="true">
     <span class="hud-phase">—</span>
-    <span class="hud-item"><i>外向</i><b id="hud-counter">—</b></span>
-    <span class="hud-item"><i>内傾</i><b id="hud-incl">—</b></span>
-    <span class="hud-item"><i>荷重</i><b id="hud-load">—</b></span>
+    <span class="hud-item inp" title="入力（自分でつくる）"><i>外向</i><b id="hud-counter">—</b></span>
+    <span class="hud-item res" title="結果（力学で決まる）"><i>内傾</i><b id="hud-incl">—</b></span>
+    <span class="hud-item res" title="結果（力学で決まる）"><i>荷重</i><b id="hud-load">—</b></span>
   </div>
 
   <!-- ===== 左パネル：操作 ===== -->
@@ -71,8 +75,8 @@
       <p class="hint">ドラッグで回転／ホイールで拡大縮小／右ドラッグで平行移動</p>
     </section>
 
-    <section class="block">
-      <h2>レベル（滑走設定）</h2>
+    <section class="block input">
+      <h2>レベル（滑走設定）<span class="tag inp">入力</span></h2>
       <div class="chips" id="level-presets">
         <button class="chip" data-level="beginner">初級</button>
         <button class="chip" data-level="intermediate">中級</button>
@@ -80,8 +84,11 @@
       </div>
     </section>
 
-    <section class="block">
-      <h2>姿勢パラメータ</h2>
+    <section class="block input">
+      <h2>姿勢パラメータ<span class="tag inp">入力</span></h2>
+      <p class="hint io-note">ここで決めるのは<b class="t-inp">自分でつくる量</b>だけです。
+        内傾角・エッジ角・雪からの力は<b class="t-res">結果</b>（力学で決まる）なので、
+        つまみはありません — 「数値」の紫の欄に出ます。</p>
       <label class="slider">
         <span>外向角（骨盤のひねり）<b id="out-counter">—</b></span>
         <input type="range" id="rng-counter" min="0" max="45" step="1" />
@@ -100,8 +107,8 @@
       </label>
     </section>
 
-    <section class="block">
-      <h2>コースセット（FIS 準拠）</h2>
+    <section class="block input">
+      <h2>コースセット（FIS 準拠）<span class="tag inp">入力</span></h2>
       <label class="slider">
         <span>ポール間隔<b id="out-gate">—</b></span>
         <input type="range" id="rng-gate" min="6" max="30" step="0.5" />
@@ -116,17 +123,19 @@
     <section class="block">
       <h2>表示</h2>
       <div class="toggles">
-        <label><input type="checkbox" id="tg-forces" checked /> 力のベクトル</label>
-        <label><input type="checkbox" id="tg-body" checked /> 身体（半透明）</label>
-        <label><input type="checkbox" id="tg-skeleton" checked /> 骨格</label>
-        <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
-        <label><input type="checkbox" id="tg-angles" checked /> 角度ガイド</label>
-        <label><input type="checkbox" id="tg-track" checked /> シュプール</label>
-        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
         <label><input type="checkbox" id="tg-moves" checked /> 動作ガイド</label>
+        <label><input type="checkbox" id="tg-body" checked /> 身体（半透明）</label>
+        <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
+        <label><input type="checkbox" id="tg-skeleton" checked /> 骨格</label>
+        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+        <label><input type="checkbox" id="tg-forces" /> 力のベクトル</label>
+        <label><input type="checkbox" id="tg-angles" /> 角度ガイド</label>
+        <label><input type="checkbox" id="tg-track" /> シュプール</label>
         <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
         <label><input type="checkbox" id="tg-ghost" /> 比較：外向なし</label>
       </div>
+      <p class="hint">はじめは<b>動作ガイド・身体・骨盤</b>の 3 つだけ。
+        慣れたら力や角度を足していきます（一度に出すラベルは 4 つまで）。</p>
     </section>
   </aside>
 
@@ -151,6 +160,11 @@
       <p class="hint">白＝スキーの進行方向／青＝骨盤の正面／橙＝肩の正面。開いた角度が<b>外向角</b>で、肩は骨盤の約2倍開きます。</p>
     </section>
 
+    <section class="block" id="block-readouts">
+      <h2>数値</h2>
+      <div class="readouts" id="readouts"></div>
+    </section>
+
     <section class="block">
       <h2>骨盤の動き</h2>
       <div class="motions" id="pelvis-motions"></div>
@@ -167,11 +181,6 @@
       <div class="motions" id="hip-motions"></div>
       <p class="hint">骨盤から見た大腿骨の向きです。<b>外向</b>は骨盤を外へ回すので、
         外脚の股関節では<b>内旋</b>として現れます。</p>
-    </section>
-
-    <section class="block">
-      <h2>数値</h2>
-      <div class="readouts" id="readouts"></div>
     </section>
 
     <section class="block">
@@ -201,6 +210,22 @@
     </label>
   </footer>
 
+  <!-- ===== はじめのガイド（初回だけ・3 ステップ） ===== -->
+  <div id="tour" role="dialog" aria-labelledby="tour-title" aria-live="polite" hidden>
+    <div class="tour-head">
+      <span class="tour-dots" id="tour-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="tour-count" id="tour-count">1 / 3</span>
+      <button class="close" id="tour-close" aria-label="ガイドを閉じる">×</button>
+    </div>
+    <h3 id="tour-title">—</h3>
+    <p id="tour-text">—</p>
+    <div class="tour-actions">
+      <button class="tour-do" id="tour-do">—</button>
+      <button class="tour-next" id="tour-next">次へ</button>
+    </div>
+    <button class="tour-skip" id="tour-skip">ガイドを飛ばす</button>
+  </div>
+
   <!-- ===== 用語モーダル ===== -->
   <div id="help" class="modal" hidden>
     <div class="modal-inner" role="dialog" aria-modal="true" aria-labelledby="help-title">
@@ -217,12 +242,18 @@
             矢印が出ているところが<b>いま動かしている場所</b>です。右のパネルに上位 3 つが言葉で出ます。</p>
           <h3>内傾（ないけい）</h3>
           <p>遠心力と重力の合力の向きに身体が倒れる角度。<b>力学で決まる</b>ので自分では自由に選べません。</p>
+          <h3>入力と結果（色の約束）</h3>
+          <p><span class="kk inp">入力</span> 自分でつくる量（外向角・外傾角・速度）。左のつまみで変えられます。<br>
+            <span class="kk res">結果</span> 力学で決まる量（内傾角・エッジ角・雪からの力）。つまみはなく、入力を変えると<b>勝手に</b>変わります。<br>
+            <span class="kk asm">想定</span> レベルごとに置いた仮定（外脚の荷重配分・圧の前後位置）。</p>
         </div>
         <div>
           <h3>骨盤の色分け</h3>
           <ul class="bonelist" id="bone-legend"></ul>
-          <h3>キーボード</h3>
-          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>三人称 <kbd>2</kbd>一人称 <kbd>3</kbd>骨盤　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ</p>
+          <h3>はじめのガイド</h3>
+          <p><button class="ghost" id="btn-tour-again">はじめのガイドをもう一度</button></p>
+          <h3>キーボード（操作）</h3>
+          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>三人称 <kbd>2</kbd>一人称 <kbd>3</kbd>骨盤　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ　<kbd>Esc</kbd> 閉じる</p>
         </div>
       </div>
       <p class="sources">数値の出典：FIS International Ski Competition Rules (ICR) 801/901条、FIS Specifications for Alpine Competition Equipment 2024/25、身体寸法は Drillis &amp; Contini (1966) / Winter (2009)。詳細は <code>docs/REFERENCES.md</code>。</p>

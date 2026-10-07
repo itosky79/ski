@@ -10,6 +10,7 @@ import { ForceView, AngleGuides } from './forces.js';
 import { CameraRig } from './views.js';
 import { UI, LabelLayer } from './ui.js';
 import { MotionGuide } from './motion.js';
+import { Tour } from './tour.js';
 
 const deg = (r) => r * 180 / Math.PI;
 
@@ -22,9 +23,17 @@ const app = {
   rate: 0.25,
   u: 0,
   gateCount: 9,
-  show: { forces: true, body: true, skeleton: true, pelvis: true, angles: true,
-          track: true, gates: true, moves: true, muscles: false, ghost: false },
+  /* はじめに出すのは「動作ガイド・身体・骨盤の色分け」の 3 つだけ。
+   * 力・角度・シュプールまで最初から全部出すと、初心者はどこを見ればいいか分からない。
+   * 必要になったら左の「表示」から足す（はじめのガイドでも順に足していく）。 */
+  show: { forces: false, body: true, skeleton: true, pelvis: true, angles: false,
+          track: false, gates: true, moves: true, muscles: false, ghost: false },
 };
+
+/* 起動・種目切り替えのときに見せる位相。切り替え（0）から始めると
+ * 外向も外傾もほぼ 0 で「ただ立っている人」に見えるので、
+ * いちばん形が出ている山回り（後半）から始める。1 つ前のターンの旗門も画面に入るよう 2 ターン目にする。 */
+const START_PHASE = 1.72;
 
 /* ---------- 3D 基本セット ---------- */
 const canvas = document.getElementById('view');
@@ -176,8 +185,9 @@ const ui = new UI({
     if (k === 'ghost') camRig.dist *= v ? 1.4 : 1 / 1.4;
     applyVisibility();
   },
-  onPlayToggle() { app.playing = !app.playing; ui.setPlaying(app.playing); },
+  onPlayToggle() { app.tourHold = false; app.playing = !app.playing; ui.setPlaying(app.playing); },
   onScrub(p) {
+    app.tourHold = false;
     app.playing = false; ui.setPlaying(false);
     const cycle = Math.floor(app.u / model.halfCycle);
     app.u = (cycle + p) * model.halfCycle;
@@ -214,7 +224,8 @@ function rebuild(resetPosition) {
   ghost.setGhost(true);
   scene.add(skier.root, ghost.root);
   enableShadows(skier.root);
-  if (resetPosition) app.u = 0;
+  if (resetPosition) app.u = START_PHASE * model.halfCycle;
+  ui.setPhase((app.u % model.halfCycle) / model.halfCycle);
   rebuildCourse();
   camRig.setScale(disc.key === 'GS' ? 1.35 : 1);
   applyVisibility();
@@ -261,7 +272,10 @@ function pelvisMotions(s) {
   if (!a.pelvisFwd || !a.outerAnkle) return { yaw: 0, spine: 0, hip: 0, shin: 0 };
   const yaw = deg(s.counter);
   const spine = deg(s.counterSpine ?? s.counter);
-  const hip = deg(Math.acos(THREE.MathUtils.clamp(a.pelvisUp.dot(s.legDir), -1, 1)));
+  // 腰の折れ＝前額面だけで見る（骨盤の前傾ぶんが混ざらないよう、進行方向の成分を落とす）
+  const pu = a.pelvisUp.clone().addScaledVector(s.tangent, -a.pelvisUp.dot(s.tangent)).normalize();
+  const lg = s.legDir.clone().addScaledVector(s.tangent, -s.legDir.dot(s.tangent)).normalize();
+  const hip = deg(Math.acos(THREE.MathUtils.clamp(pu.dot(lg), -1, 1)));
   const shinDir = a.outerKnee.clone().sub(a.outerAnkle).normalize();
   const shin = deg(Math.asin(THREE.MathUtils.clamp(shinDir.dot(s.tangent), -1, 1)));
   return { yaw, spine, hip, shin };
@@ -278,85 +292,90 @@ function hipMotions() {
 }
 
 /* ---------- ラベル ---------- */
+/* 一度に出すラベルの上限。7 つも 8 つも出すと、初心者はどれも読まない。
+ * 大事な順（prio が小さい順）に上限まで出す。
+ *   動作ガイドの 1 位 → 外向角（入力） → 内傾角（結果） → 外スキーの力 → 動作ガイドの 2 位 → …
+ * 色の約束：青い縁＝入力（スライダーで自分が決めた量）、
+ *           紫の点線＝結果（力学で決まって自分では選べない量）。 */
+const LABEL_MAX = { third: 4, narrow: 3, pelvis: 9, pelvisNarrow: 6 };
+const PRIO = { do0: 0, ghost: 1, counter: 2, incl: 3, fn: 4, do1: 5, do2: 6,
+  angulation: 7, edge: 8, fni: 9, skidir: 10, pelvisdir: 10, fg: 12, fc: 12, cp: 13 };
+
+function labelMax() {
+  const narrow = size.w < 820;
+  if (camRig.mode === 'pelvis') return narrow ? LABEL_MAX.pelvisNarrow : LABEL_MAX.pelvis;
+  return narrow ? LABEL_MAX.narrow : LABEL_MAX.third;
+}
+
 function updateLabels(s) {
   const a = skier.state.anchors;
   const pelvisView = camRig.mode === 'pelvis';
   const close = pelvisView || camRig.dist < 4;
   const narrow = size.w < 820;
+  const L = (key, text, pos, cls, prio = PRIO[key] ?? 30) => labels.set(key, text, pos, cls, prio);
 
-  // 動作ガイド：矢印の先に「何をするか」を出す（これが主役なので常に出す）
+  // 動作ガイド：矢印の先に「何をするか」を出す（これが主役なので最優先）
   if (app.show.moves && !pelvisView && camRig.mode !== 'first') {
     motion.active.forEach((m, i) => {
-      if (narrow && i > 0) return;
-      labels.set('do_' + i, (i === 0 ? '▶ ' : '') + m.text, m.anchor, i === 0 ? 'do' : 'do small');
+      if (narrow && i > 0) return;          // 狭い画面は 1 位だけ（残りはパネルの文字で）
+      L('do_' + i, (i === 0 ? '▶ ' : '') + m.text, m.anchor, i === 0 ? 'do' : 'do small',
+        PRIO['do' + i]);
     });
   }
 
   if (pelvisView) {
     // 骨盤クローズアップ：骨の名前と、骨盤まわりの角度だけ
-    const keep = narrow
-      ? ['crest', 'asis', 'sacrum', 'acetabulum', 'ischium']
-      : null;
+    if (app.show.angles) {
+      L('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`,
+        guides.anchors.counter ?? a.pelvis, 'inp', 0);
+      L('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`,
+        guides.anchors.angulation ?? a.pelvis, 'inp small', 3);
+    }
+    // どちらの腸骨が「外側」かを示す
+    L('bone_ilium', '腸骨（外側＝赤）',
+      a.pelvis.clone().addScaledVector(s.outward, 0.15)
+        .addScaledVector(a.pelvisUp, 0.075), 'small', 1);
+    const first = ['crest', 'asis', 'sacrum', 'acetabulum', 'ischium'];
     for (const l of skier.pelvis.labelPoints()) {
-      if (keep && !keep.includes(l.key)) continue;
-      labels.set('bone_' + l.key, l.name, l.pos, 'small');
-    }
-    if (!narrow) {
-      // どちらの腸骨が「外側」かを示す
-      labels.set('bone_ilium', '腸骨（外側＝赤）',
-        a.pelvis.clone().addScaledVector(s.outward, 0.15)
-          .addScaledVector(a.pelvisUp, 0.075), 'small');
-    }
-    if (app.show.angles) {
-      labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`,
-        guides.anchors.counter ?? a.pelvis);
-      if (!narrow) {
-        labels.set('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`,
-          guides.anchors.angulation ?? a.pelvis, 'small');
-      }
-    }
-    return;
-  }
-
-  // 狭い画面はラベルが重なって読めなくなるので、要点だけに絞る
-  if (narrow) {
-    if (app.show.angles) {
-      labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`,
-        guides.anchors.counter ?? a.pelvis);
-    }
-    if (app.show.forces) {
-      labels.set('fn', `外スキー <b>${forceView.values.outerBW.toFixed(2)}×体重</b>`,
-        forceView.anchors.snow);
+      const k = first.indexOf(l.key);
+      L('bone_' + l.key, l.name, l.pos, 'small', k >= 0 ? 4 + k : 20);
     }
     return;
   }
 
   if (app.show.angles) {
-    labels.set('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`, guides.anchors.counter ?? a.pelvis);
-    labels.set('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`, guides.anchors.angulation ?? a.pelvis, 'small');
-    labels.set('incl', `内傾 ${deg(s.inclination).toFixed(0)}°`, guides.anchors.inclination ?? a.com, 'small');
-    labels.set('edge', `エッジ ${deg(s.edgeAngle).toFixed(0)}°`, guides.anchors.edge ?? a.outerFoot, 'small');
-    if (close || camRig.preset === 'top') {
-      labels.set('skidir', 'スキーの向き', guides.anchors.skiDir, 'small');
-      labels.set('pelvisdir', '骨盤の向き', guides.anchors.pelvisDir, 'small');
+    L('counter', `外向角 <b>${deg(s.counter).toFixed(0)}°</b>`, guides.anchors.counter ?? a.pelvis, 'inp');
+    L('angulation', `外傾 ${deg(s.angulation).toFixed(0)}°`, guides.anchors.angulation ?? a.pelvis, 'inp small');
+    L('incl', `内傾 ${deg(s.inclination).toFixed(0)}°`, guides.anchors.inclination ?? a.com, 'res small');
+    L('edge', `エッジ ${deg(s.edgeAngle).toFixed(0)}°`, guides.anchors.edge ?? a.outerFoot, 'res small');
+    if (!narrow && (close || camRig.preset === 'top')) {
+      L('skidir', 'スキーの向き', guides.anchors.skiDir, 'small');
+      L('pelvisdir', '骨盤の向き', guides.anchors.pelvisDir, 'small');
     }
   }
   if (app.show.forces) {
     const v = forceView.values;
-    labels.set('fn', `外スキー <b>${v.outerBW.toFixed(2)}×体重</b>`, forceView.anchors.snow);
-    labels.set('fni', `内スキー ${v.innerBW.toFixed(2)}×体重`, forceView.anchors.snowInner, 'small');
-    labels.set('fg', `重力 ${(v.gravity / 9.80665).toFixed(0)} kgf`, forceView.anchors.gravity, 'small');
+    L('fn', `外スキー <b>${v.outerBW.toFixed(2)}×体重</b>`, forceView.anchors.snow, 'res');
+    L('fni', `内スキー ${v.innerBW.toFixed(2)}×体重`, forceView.anchors.snowInner, 'res small');
+    L('fg', `重力 ${(v.gravity / 9.80665).toFixed(0)} kgf`, forceView.anchors.gravity, 'res small');
     if (forceView.anchors.centrifugal) {
-      labels.set('fc', `遠心力 ${(v.centrifugal / 9.80665).toFixed(0)} kgf`, forceView.anchors.centrifugal, 'small');
+      L('fc', `遠心力 ${(v.centrifugal / 9.80665).toFixed(0)} kgf`, forceView.anchors.centrifugal, 'res small');
     }
-    labels.set('cp', `圧の中心 ブーツ前 ${(v.cpOffset * 100).toFixed(0)}cm`,
-      forceView.anchors.cp, 'small');
+    L('cp', `圧の中心 ブーツ前 ${(v.cpOffset * 100).toFixed(0)}cm`, forceView.anchors.cp, 'res small');
   }
 }
 
 /* ---------- ループ ---------- */
 const clock = new THREE.Clock();
 let size = { w: 1, h: 1 };
+let viewShift = 0;
+const tourEl = document.getElementById('tour');
+
+/** 画面の下をふさいでいる高さ [px]（狭い画面でガイドのカードが出ているときだけ） */
+function bottomOcclusion() {
+  if (size.w >= 820 || !tourEl || tourEl.hidden) return 0;
+  return Math.max(0, size.h - tourEl.getBoundingClientRect().top);
+}
 
 function resize() {
   const w = canvas.clientWidth || window.innerWidth;
@@ -400,7 +419,7 @@ function tick() {
     ghost.root.position.add(model.C.clone().multiplyScalar(GHOST_OFFSET));
     labels.set('ghost', '外向・外傾なし（内傾だけ）',
       ghost.state.anchors.head.clone().addScaledVector(model.C, GHOST_OFFSET)
-        .addScaledVector(model.N, 0.35), 'small');
+        .addScaledVector(model.N, 0.35), 'small', PRIO.ghost);
   }
   course.updateGates(app.u);
   forceView.update(s);
@@ -420,20 +439,67 @@ function tick() {
   sun.position.copy(s.com).add(new THREE.Vector3(6, 12, 5));
 
   camRig.update(model, s, skier.state, dt);
+  // 狭い画面でガイドのカードが下を覆っている間は、絵をカードの上の空いた所へ寄せる
+  const occ = bottomOcclusion();
+  viewShift += (occ / 2 - viewShift) * (1 - Math.exp(-dt * 7));
+  if (Math.abs(viewShift) > 0.5) camera.setViewOffset(size.w, size.h, 0, viewShift, size.w, size.h);
+  else if (camera.view?.enabled) camera.clearViewOffset();
   renderer.render(scene, camera);
   labels.render(camera, size, skier.state.anchors.pelvis,
-                camRig.mode === 'pelvis' ? 130 : (size.w < 820 ? 76 : 96));
+                camRig.mode === 'pelvis' ? 130 : (size.w < 820 ? 76 : 96), labelMax(),
+                Math.max(54, occ + 10));
+  ui.setLabelKey(labels.shownIO);
   requestAnimationFrame(tick);
 }
+
+/* ---------- はじめのガイド ---------- */
+function setShow(k, on) { app.show[k] = on; ui.setToggle(k, on); }
+const tour = new Tour({
+  onStart() {
+    // 見る順番を案内するので、初期の 3 つの表示・三人称・山回りで止めた状態から始める
+    setShow('forces', false); setShow('angles', false); setShow('moves', true);
+    if (app.view && app.view !== 'third') ui.setView('third');
+    ui.setCamera('follow'); ui.h.onCamera('follow');
+    app.playing = false; ui.setPlaying(false); app.tourHold = true;
+    app.u = (Math.floor(app.u / model.halfCycle) + 0.72) * model.halfCycle;
+    ui.setPhase(0.72);
+    applyVisibility();
+  },
+  onSlow() {
+    app.rate = 0.1; ui.setRate(0.1);
+    app.tourHold = false; app.playing = true; ui.setPlaying(true);
+  },
+  onPelvis() { ui.setView('pelvis'); },
+  onForces() {
+    if (app.view !== 'third') ui.setView('third');
+    setShow('forces', true); setShow('angles', true);
+    applyVisibility();
+  },
+  onEnd() {
+    // ガイドが止めたままなら動かしておく（止まった画面のまま放り出さない）
+    if (app.tourHold) { app.tourHold = false; app.playing = true; ui.setPlaying(true); }
+  },
+});
+document.getElementById('btn-tour-again')?.addEventListener('click', () => {
+  ui.toggleHelp(false);
+  tour.start();
+});
 
 /* ---------- キーボード ---------- */
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const step = model.halfCycle / 60;
+  if (e.key === ' ' || e.key.startsWith('Arrow')) app.tourHold = false;
   switch (e.key) {
-    case ' ': e.preventDefault(); app.playing = !app.playing; ui.setPlaying(app.playing); break;
+    case ' ':
+      // ガイドのボタンにフォーカスがあるときの Space はボタンを押す（再生と二重に効かせない）
+      if (e.target.closest?.('#tour')) return;
+      e.preventDefault(); app.playing = !app.playing; ui.setPlaying(app.playing); break;
     case 'ArrowRight': app.playing = false; ui.setPlaying(false); app.u += step; break;
     case 'ArrowLeft': app.playing = false; ui.setPlaying(false); app.u = Math.max(0, app.u - step); break;
+    case 'Escape':
+      if (!document.getElementById('help').hidden) ui.toggleHelp(false);
+      break;
     case '1': ui.setView('third'); break;
     case '2': ui.setView('first'); break;
     case '3': ui.setView('pelvis'); break;
@@ -454,7 +520,7 @@ window.addEventListener('keydown', (e) => {
 /* ---------- 起動 ---------- */
 // デバッグ／授業用のハンドル（コンソールから触れるように）
 window.skiTrainer = { app, get model() { return model; }, get skier() { return skier; },
-  camRig, ui, scene, renderer, course, motion };
+  camRig, ui, scene, renderer, course, motion, tour, labels };
 
 try {
   ui.setLevel(app.level);
@@ -463,6 +529,7 @@ try {
   resize();
   tick();
   document.getElementById('loading').classList.add('done');
+  tour.maybeStart();
 } catch (err) {
   const e = document.getElementById('error');
   e.hidden = false;

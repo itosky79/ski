@@ -17,17 +17,25 @@ export class LabelLayer {
     this.items = new Map();
     this.v = new THREE.Vector3();
   }
-  set(key, text, pos, cls = '') {
+  /**
+   * @param {string} key
+   * @param {string} text  HTML 可
+   * @param {THREE.Vector3} pos
+   * @param {string} cls   'small' / 'do' / 'inp'（入力）/ 'res'（物理で決まる）など
+   * @param {number} prio  小さいほど大事。上限を超えたぶんは大きい順に消す
+   */
+  set(key, text, pos, cls = '', prio = 50) {
     let it = this.items.get(key);
     if (!it) {
       const d = document.createElement('div');
-      d.className = 'lbl ' + cls;
       this.el.appendChild(d);
-      it = { d, pos: new THREE.Vector3() };
+      it = { d, pos: new THREE.Vector3(), cls: null };
       this.items.set(key, it);
     }
-    if (it.d.textContent !== text) it.d.innerHTML = text;
+    if (it.cls !== cls) { it.d.className = 'lbl ' + cls; it.cls = cls; }
+    if (it.html !== text) { it.d.innerHTML = text; it.html = text; }
     it.pos.copy(pos);
+    it.prio = prio;
     it.live = true;
   }
   /**
@@ -35,16 +43,27 @@ export class LabelLayer {
    * focus（スキーヤーの位置）が与えられたら、その周りの一定半径より外へ押し出し、
    * さらに縦方向の重なりをほどいて読みやすくする。
    */
-  render(camera, size, focus = null, minR = 96) {
+  render(camera, size, focus = null, minR = 96, max = Infinity, bottom = 54) {
     let fx = null, fy = null;
     if (focus) {
       this.v.copy(focus).project(camera);
       fx = (this.v.x * 0.5 + 0.5) * size.w;
       fy = (-this.v.y * 0.5 + 0.5) * size.h;
     }
+    /* 一度に読めるラベルは 4 つくらいまで。大事な順に並べて、
+     * 上限を超えたぶんは出さない（大事なものから場所を取るので、重なりも減る）。 */
+    const order = [...this.items.values()].filter((it) => it.live)
+      .sort((x, y) => x.prio - y.prio);
+    const shown = new Set(order.slice(0, max));
+    this.shownCount = shown.size;
+    // 入力／結果の色分けラベルが 1 つでも出ていれば凡例を出す
+    this.shownIO = [...shown].some((it) => /\b(inp|res)\b/.test(it.cls));
     const placed = [];
-    for (const [, it] of this.items) {
-      if (!it.live) { it.d.style.display = 'none'; continue; }
+    for (const it of this.items.values()) if (!shown.has(it)) {
+      it.d.style.display = 'none'; it.live = false;
+    }
+    for (const it of order) {
+      if (!shown.has(it)) continue;
       this.v.copy(it.pos).project(camera);
       if (this.v.z >= 1) { it.d.style.display = 'none'; it.live = false; continue; }
       let x = (this.v.x * 0.5 + 0.5) * size.w;
@@ -67,7 +86,7 @@ export class LabelLayer {
       // 画面からはみ出さないように収める（ラベルの幅を見て左右に余白をとる）
       const hw = (it.d.offsetWidth || 90) / 2 + 6;
       x = Math.max(hw, Math.min(size.w - hw, x));
-      y = Math.max(46, Math.min(size.h - 54, y));
+      y = Math.max(46, Math.min(size.h - bottom, y));
       placed.push({ x, y });
       it.d.style.display = '';
       it.d.style.left = `${Math.round(x)}px`;
@@ -85,22 +104,32 @@ export class LabelLayer {
 export class UI {
   constructor(handlers) {
     this.h = handlers;
+    /* 数値は 3 つに分けて出す。初心者がいちばん混乱するのは
+     * 「どれが自分で変えられて、どれが勝手に決まるのか」なので、それを色と見出しで分ける。
+     *   inp : 入力 — 自分でつくる量（左のつまみ）
+     *   res : 結果 — 入力とコースから力学・幾何で決まる量（つまみはない）
+     *   asm : 想定 — レベルごとに置いたモデルの仮定 */
+    this.readoutGroups = [
+      { g: 'inp', title: '入力 — 自分でつくる', note: 'つまみで変えられる量' },
+      { g: 'res', title: '結果 — 力学で決まる', note: '入力を変えると勝手に変わる。自分では選べない' },
+      { g: 'asm', title: '想定 — モデルの仮定', note: 'レベルごとに置いた値（実測の範囲から）' },
+    ];
     this.readoutDefs = [
-      { k: 'speed', label: '速度', unit: 'km/h' },
-      { k: 'radius', label: '旋回半径', unit: 'm' },
-      { k: 'counter', label: '外向角（骨盤）', unit: '°', hi: '--outer' },
-      { k: 'counterSpine', label: '外向角（上体）', unit: '°', hi: '--outer' },
-      { k: 'angulation', label: '外傾角（腰）', unit: '°', hi: '--inner' },
-      { k: 'inclination', label: '内傾角（力学）', unit: '°' },
-      { k: 'edge', label: 'エッジ角', unit: '°' },
-      { k: 'load', label: '合計の力', unit: '体重比' },
-      { k: 'share', label: '外脚の荷重配分', unit: '%' },
-      { k: 'fOuter', label: '外スキーの力', unit: '体重比', hi: '--outer' },
-      { k: 'fInner', label: '内スキーの力', unit: '体重比', hi: '--inner' },
-      { k: 'cp', label: '圧の中心（ブーツ前）', unit: 'cm' },
-      { k: 'lead', label: '内スキーの先行', unit: 'cm' },
-      { k: 'hipLead', label: '内腰の先行', unit: 'cm' },
-      { k: 'carve', label: 'カービング判定', unit: '', wide: true },
+      { k: 'counter', g: 'inp', label: '外向角（骨盤）', unit: '°', hi: '--outer' },
+      { k: 'counterSpine', g: 'inp', label: '外向角（上体）', unit: '°', hi: '--outer' },
+      { k: 'angulation', g: 'inp', label: '外傾角（腰）', unit: '°', hi: '--inner' },
+      { k: 'speed', g: 'inp', label: '速度', unit: 'km/h' },
+      { k: 'inclination', g: 'res', label: '内傾角', unit: '°' },
+      { k: 'edge', g: 'res', label: 'エッジ角', unit: '°' },
+      { k: 'radius', g: 'res', label: '旋回半径', unit: 'm' },
+      { k: 'load', g: 'res', label: '合計の力', unit: '体重比' },
+      { k: 'fOuter', g: 'res', label: '外スキーの力', unit: '体重比', hi: '--outer' },
+      { k: 'fInner', g: 'res', label: '内スキーの力', unit: '体重比', hi: '--inner' },
+      { k: 'lead', g: 'res', label: '内スキーの先行', unit: 'cm' },
+      { k: 'hipLead', g: 'res', label: '内腰の先行', unit: 'cm' },
+      { k: 'carve', g: 'res', label: 'カービング判定', unit: '', wide: true },
+      { k: 'share', g: 'asm', label: '外脚の荷重配分', unit: '%' },
+      { k: 'cp', g: 'asm', label: '圧の中心（ブーツ前）', unit: 'cm' },
     ];
     this.motionDefs = [
       { k: 'yaw', name: '回旋（外向・骨盤）', range: 40, color: 'var(--outer)',
@@ -161,13 +190,19 @@ export class UI {
     const box = $('#readouts');
     box.innerHTML = '';
     this.ro = {};
-    for (const d of this.readoutDefs) {
-      const el = document.createElement('div');
-      el.className = 'ro' + (d.wide ? ' wide' : '');
-      el.innerHTML = `<span>${d.label}</span><b>—<i>${d.unit}</i></b>`;
-      box.appendChild(el);
-      this.ro[d.k] = el.querySelector('b');
-      if (d.hi) this.ro[d.k].style.color = `var(${d.hi})`;
+    for (const grp of this.readoutGroups) {
+      const head = document.createElement('div');
+      head.className = 'ro-group ' + grp.g;
+      head.innerHTML = `<b>${grp.title}</b><small>${grp.note}</small>`;
+      box.appendChild(head);
+      for (const d of this.readoutDefs.filter((x) => x.g === grp.g)) {
+        const el = document.createElement('div');
+        el.className = `ro ${d.g}` + (d.wide ? ' wide' : '');
+        el.innerHTML = `<span>${d.label}</span><b>—<i>${d.unit}</i></b>`;
+        box.appendChild(el);
+        this.ro[d.k] = el.querySelector('b');
+        if (d.hi) this.ro[d.k].style.color = `var(${d.hi})`;
+      }
     }
   }
 
@@ -323,6 +358,14 @@ export class UI {
   toggleHelp(on) { $('#help').hidden = !on; }
 
   setPlaying(on) { $('#btn-play').textContent = on ? '❚❚' : '▶'; }
+
+  setRate(r) { $('#sel-rate').value = String(r); }
+
+  /** 表示トグルをコードから切り替える（チェックボックスも合わせる） */
+  setToggle(k, on) { if (this.toggles[k]) this.toggles[k].checked = on; }
+
+  /** 3D ラベルの凡例（入力／結果のラベルが出ているときだけ） */
+  setLabelKey(on) { const el = $('#lbl-key'); if (el && el.hidden === on) el.hidden = !on; }
 
   setPhase(p) {
     const el = $('#rng-phase');
