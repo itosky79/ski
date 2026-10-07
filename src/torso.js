@@ -219,9 +219,11 @@ export function createTorso(H, boneMat, discMat) {
   /* ---- 鎖骨・肩甲骨（T1〜T2 にぶら下げる） ---- */
   const girdleHost = thoracic[T - 2] || thoracic[T - 1];
   const shoulders = {};
+  const girdles = [];
   for (const side of [1, -1]) {
     const key = side > 0 ? 'L' : 'R';
     const g = new THREE.Group();
+    girdles.push(g);
     // 鎖骨：胸骨端から肩峰へ S 字
     const clav = new THREE.Mesh(new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3([
@@ -294,6 +296,14 @@ export function createTorso(H, boneMat, discMat) {
     group: root, verts, thoracic, shoulders, headMount, ribMeshes, update,
     /** 股関節の前屈（骨盤に対して上体を前へ倒す角度 [rad]） */
     setHipFlex(a) { stack.rotation.x = SACRAL_SLOPE + a; },
+    /**
+     * 肩甲帯の傾き [rad]（+ で左肩が上がる）。
+     * 側屈を椎骨に分散すると、上の胸椎ほど傾きが積み重なって
+     * 「肩の線」が体幹の線より 10° ほど余計に傾く（内肩が落ちる）。
+     * 実際は肩甲骨を挙上・下制して肩の線を保てるので、そのぶんをここで戻す。
+     * 回すのは T2 の中心まわりなので、左右の肩の中点（側屈の解で使う点）は動かない。
+     */
+    setGirdleRoll(a) { for (const g of girdles) g.rotation.z = a; },
     /** 肩の位置（体幹ローカル）。シーングラフを触らずに計算する */
     shoulderLocal,
     /** 脊柱の総高さ（仙骨上端から C1 まで） */
