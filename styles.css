@@ -503,6 +503,11 @@ body.panels-hidden #coach{opacity:0;pointer-events:none}
 #coach-sub[hidden]{display:none}
 #coach-why{grid-column:1;margin:0;font-size:12px;line-height:1.45;color:var(--fg-dim)}
 #coach-compass{grid-column:2;grid-row:1 / span 4;width:112px;height:68px;align-self:center}
+/* カードは「局面の名前」と「いま、やること」の 2 行だけにする（「情報量が多すぎる」）。
+   なぜ・5 つの点・コンパス・再生バーの局面の帯は出さない（くわしく表示の右パネルにある） */
+#coach{grid-template-columns:1fr}
+#coach-why,#coach-dots,#coach-compass{display:none}
+body.mode-simple #phase-ticks{display:none}
 
 /* 再生の速さ：スロー ¼ ／実際の速さ */
 .speedseg{display:none;flex:0 0 auto;gap:2px;padding:3px;border-radius:999px;
@@ -535,7 +540,7 @@ body.view-first #fp-goggle{display:block}
   body.mode-simple #topbar{padding-bottom:8px}
 
   #coach{width:calc(100% - 12px);bottom:calc(66px + env(safe-area-inset-bottom,0px));
-    grid-template-columns:1fr 84px;gap:1px 8px;padding:8px 11px 9px;border-radius:13px}
+    grid-template-columns:1fr;gap:1px 8px;padding:8px 11px 9px;border-radius:13px}
   #coach-cue{font-size:17px}
   #coach-cue.fast{font-size:15px}
   #coach-sub{font-size:12px}

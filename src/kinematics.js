@@ -29,6 +29,8 @@
 import * as THREE from 'three';
 import { G, PHASES, SEGMENT_MASS } from './constants.js';
 
+/* 切り替えのクロスオーバーの先取りの幅（位相、調整値）。_crossover を参照 */
+const CROSS_SIGMA = 0.16;
 const TAU = Math.PI * 2;
 const smoothstep = (e0, e1, x) => {
   const t = THREE.MathUtils.clamp((x - e0) / (e1 - e0), 0, 1);
@@ -271,6 +273,36 @@ export class TurnModel {
   }
 
   /**
+   * 切り替えのクロスオーバーを先取りする。
+   *
+   * 力の釣り合いだけで身体の傾きを決めると、新しいターンの入りでは重力の横成分が
+   * 曲がる手助けをするぶん「まだ傾かなくてよい」ことになり、身体が板の上を越えるのが
+   * 切り替えより位相 0.05 ほど遅れていた（競技 SL）。その間に板はフラットを通ったあと
+   * 一度前のエッジへ戻ってから（約 3°）もう一度切り替わり、膝も止まる。
+   * これが「切り替えで引っかかる」の正体だった。
+   *
+   * 実際の選手は、板がフラットを通る瞬間に身体が板の上を越えていく（勢いで先に運ぶ）。
+   * そこで、斜面に固定した向きで測った身体の傾き Λ から、切り替えの瞬間の値 Λ₀ を
+   * ガウス形（σ = 位相 0.08、調整値）で差し引き、Λ がちょうど切り替えで 0 を通るようにする。
+   * 切り替えの瞬間に補正後の傾きが 0 なので、内外が裏返っても跳ばない（4.11 の約束）。
+   */
+  _crossover(u, d) {
+    const hc = this.halfCycle;
+    const ut = Math.round(u / hc) * hc;              // いちばん近い切り替え
+    const bump = Math.exp(-(((u - ut) / hc / CROSS_SIGMA) ** 2));
+    if (bump < 1e-4) return d;
+    const fixedLean = (x) => {                        // 斜面に固定した向きの傾き（eLat 側が +）
+      const e = this._dynamics(x);
+      return e.lambda * Math.sign(e.inward.dot(e.eLat) || 1);
+    };
+    const lean0 = 0.5 * (fixedLean(ut - 1e-3 * hc) + fixedLean(ut + 1e-3 * hc));
+    const sgn = Math.sign(d.inward.dot(d.eLat) || 1);
+    const delta = -lean0 * bump * sgn;               // いまの内側を + とした補正角
+    return { ...d, lambda: d.lambda + delta,
+      uLeg: rotateToward(d.uLeg, d.inward, d.tangent, delta).normalize() };
+  }
+
+  /**
    * 前額面の姿勢を解く。
    * 与えられた内傾角 λ と外傾角 α に対し、質量加重重心が λ の線上に来るような
    * 脚の傾き φ_leg を二分法で求める。戻り値の comDist は接雪点から重心までの距離。
@@ -298,7 +330,7 @@ export class TurnModel {
 
   /* ---------- 公開 API ---------- */
   sample(u) {
-    const d = this._dynamics(u);
+    const d = this._crossover(u, this._dynamics(u));
     const P = this.p;
 
     const loadNorm = THREE.MathUtils.clamp(

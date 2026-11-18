@@ -439,7 +439,9 @@ function hipMotions() {
  * 骨盤アップは「外向 13°」と「赤＝外側の腰骨」の 2 つだけ。骨の名前はくわしく表示で出す。
  * 色の約束：青い縁＝入力（スライダーで自分が決めた量）、
  *           紫の点線＝結果（力学で決まって自分では選べない量）。 */
-const LABEL_MAX = { third: 4, narrow: 3, pelvis: 9, pelvisNarrow: 6, simple: 1, pelvisSimple: 2 };
+/* かんたん表示では 3D の吹き出しを出さない（指示は下のカードの 1 か所だけ。
+ * 同じ文が吹き出しとカードに 2 回出ていて、「情報量が多い」と言われた）。黄色い矢印は残す。 */
+const LABEL_MAX = { third: 4, narrow: 3, pelvis: 9, pelvisNarrow: 6, simple: 0, pelvisSimple: 2 };
 const PRIO = { do0: 0, ghost: 1, counter: 2, incl: 3, fn: 4, do1: 5, do2: 6,
   angulation: 7, edge: 8, fni: 9, skidir: 10, pelvisdir: 10, fg: 12, fc: 12, cp: 13 };
 
