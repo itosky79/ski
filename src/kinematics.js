@@ -75,7 +75,7 @@ export class TurnModel {
       gammaPelvis: 0.55, activePelvis: 0.25,
       gammaSpine: 1.15, activeSpine: 0.45,
       // 内スキーは外スキーより少し多く傾ける
-      innerEdgeExtraDeg: 5,
+      innerEdgeExtraDeg: 0,
       // プラットフォーム角：雪面反力の作用線に対して板の裏をどれだけ起こすか。
       // エッジ角 = 内傾角 λ ＋ これ。噛ませるために必ず正の値をとる。
       platformDeg: 13,

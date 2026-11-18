@@ -25,8 +25,10 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const SPINE_LAT_GAIN = 2.4;
 /* 骨盤の前傾 [deg]（斜面法線から前へ）：切り替えで浅く、荷重が乗るほど深く */
 const PELVIS_TILT0 = 10, PELVIS_TILT1 = 18;
-/* 骨盤の上での上体の前傾 [deg] と、骨盤の前傾を打ち消す割合 */
-const LUMBAR0 = 6, LUMBAR1 = 10, LUMBAR_COMP = 0.80;
+/* 骨盤の上での上体の前傾 [deg] と、骨盤の前傾を打ち消す割合。
+ * LUMBAR0 は 6 → 11°：解析アプリ（Niso）の実測で上体の前傾が 25〜44°（ターン中）、
+ * モデルは 22〜30° と浅かったので 5° 足した（調整値）。 */
+const LUMBAR0 = 11, LUMBAR1 = 10, LUMBAR_COMP = 0.80;
 /* 脚を深く畳んだときに足す前傾 [deg]（調整値）。
  * 脚の長さはモデルで 0.455H（切り替え）〜 0.53H（最大荷重）なので、切り替えでいちばん畳んでいる。
  * 膝を 90° 近く曲げているのに上体が立ったままだと「椅子に座った」形（後傾）に見える。
@@ -642,12 +644,13 @@ export function createSkier(opts = {}) {
          * 目標点を置いて届く範囲へ縮めると、縮めたぶん左右の開きまで
          * つぶれてしまい、手が胸の前で団子になる。
          * 向きは胸のフレームで作り、そこへ「谷へ流れる向き」を混ぜる。
-         * 手は前へ、左右の開きは肩幅くらい（肘を張って開くと「手羽先」に見える）。 */
+         * 手は前へ、左右の開きは肩幅より少し外（W 杯の映像でも手は腰の高さで肩幅より外にある。
+         * 肘を張って横へ開くと「手羽先」に見えるので、開くのは前腕から先）。 */
         /* 肩から手までの長さ。下の softReach が tanh で縮めるので、
          * 実際の長さが腕の 0.80 倍（払う腕は 0.95 倍）になるよう逆算しておく。 */
         const ext = reach * Math.atanh(0.80 + 0.15 * pull);
         const aim = chestFwd.clone().multiplyScalar(0.95)
-          .addScaledVector(chestRight, sgn * (0.42 - 0.08 * share))
+          .addScaledVector(chestRight, sgn * (0.46 - 0.08 * share))
           .addScaledVector(N, -0.16 + 0.12 * share)
           .normalize();
         const flow = handBase.clone().sub(shoulders[side]);
