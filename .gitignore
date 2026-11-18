@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+
+# 動作確認用のスクリプト（コミットしない）
+.test-*.mjs
+.shot.mjs
