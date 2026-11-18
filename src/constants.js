@@ -180,7 +180,9 @@ export const DISCIPLINES = {
     skew: 0.03,
     gateLag: 0.10,
     // GS はパネルが遠いので、たたくというより肩でよける
-    blockSigmaBefore: 2.60, blockSigmaAfter: 1.20, blockStrength: 0.42, blockHeight: 1.15,
+    /* GS はポールにはあまり当たらない（旗門の外を大きく回るので、触れても肩や腕が軽くかすめる程度）。
+     * 以前の 0.42 だと内側の手がパネルへ出ていきすぎていたので、軽く寄せるだけにした（調整値） */
+    blockSigmaBefore: 2.60, blockSigmaAfter: 1.20, blockStrength: 0.15, blockHeight: 1.15,
     outerShareMax: 0.72,    // 実測の 70:30
     outerShareLate: 0.60,
     gammaPelvis: 0.38, activePelvis: 0.18,

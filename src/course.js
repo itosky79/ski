@@ -392,7 +392,8 @@ export class Course {
             // ターニング側は選手が肩で押していくので、旗門ごと傾く
             const unit = this._pivot(base, N, Math.sign(g.wTurn) || 1, parts);
             unit.userData.turning = g;
-            unit.userData.bend = (v) => { unit.userData.tilt.rotation.x = v * 0.20; };
+            // GS は肩や腕が軽くかすめる程度なので、旗門は少し傾くだけ（以前は 0.20）
+            unit.userData.bend = (v) => { unit.userData.tilt.rotation.x = v * 0.08; };
             turning.push(unit);
             this.gatesG.add(unit);
             this._addFade(unit, parts, base);

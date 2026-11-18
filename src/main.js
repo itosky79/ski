@@ -65,7 +65,8 @@ function writeMode(m) {
 
 const app = {
   discipline: 'SL',
-  level: 'intermediate',
+  // お手本はレーサーだけ（初級・中級の切り替えはやめた）
+  level: 'racer',
   playing: true,
   rate: SLOW_RATE,
   slowRate: SLOW_RATE,      // スローに戻すときの速さ（¼ か 1/10）

@@ -672,12 +672,18 @@ export function createSkier(opts = {}) {
              * 手は横からではなく胸の前（胸骨の 30 cm ほど前）を通ってポールへ向かう。
              * 腕は伸ばしたまま、突き（パンチ）はしない。身体の中心線は越えない
              * （実測で外の手は常に中心線より 12 cm 以上外側。ポールは上体の傾きで外側へ来る）。
-             * 高さとタイミングは設計値で、指導者の目での確認が要る。 */
+             * 高さとタイミングは設計値で、指導者の目での確認が要る。
+             *
+             * 高さは「いまの肩の高さ」（肩より上へは上げない）。以前は雪面から 0.9 m 以上に
+             * 固定していたので、身体が大きく傾いて肩が低くなると手が顔の横まで上がっていた。
+             * 払ったあとも手はポールを追って後ろへ流れず、払った位置から前へ戻る
+             * （以前は後ろへ 30 cm 流れ、「手を後ろへ振り上げた」形になっていた）。 */
             const hUp = THREE.MathUtils.clamp(
-              shoulders[side].clone().sub(s.gatePos).dot(N), 0.9, 1.4);
+              shoulders[side].clone().sub(s.gatePos).dot(N) - 0.05, 0.5, 1.4);
+            const du = s.gateDu ?? 0;
             const contact = s.gatePos.clone().addScaledVector(N, hUp)
-              // 払う前は手が先行し、払ったあとは後ろへ流れる
-              .addScaledVector(s.tangent, -0.30 * Math.tanh((s.gateDu ?? 0) / 0.8));
+              // 払う前は手が先行する。払ったあとは流さない
+              .addScaledVector(s.tangent, -0.30 * Math.tanh(Math.min(0, du) / 0.8));
             const via = sternum.clone().addScaledVector(chestFwd, 0.32);
             const p = pull, q = 1 - pull;
             // 2 次ベジエ：構え → 胸の前 → ポール
