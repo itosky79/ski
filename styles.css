@@ -553,3 +553,6 @@ body.view-first #fp-goggle{display:block}
 }
 /* ヘルプの中のページへのリンク（動画とお手本を比べる） */
 .linkbtn{display:inline-block;margin-top:6px;text-decoration:none}
+
+/* 教育に要らない項目は出さない（中のつまみや要素は JS が参照するので消さずに隠す） */
+[data-cut] { display: none !important; }
