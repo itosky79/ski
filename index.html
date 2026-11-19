@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" href="data:," />
 <title>アルペンスキー 外向・外傾 3Dトレーナー</title>
 <meta name="description" content="アルペンスキーのターンにおける外向（骨盤のひねり）・外傾・内傾を、骨盤の骨を色分けした3Dモデルと力のベクトルで学ぶ指導用ツール。SL/GSの2パターン、一人称・三人称視点に対応。" />
 <link rel="stylesheet" href="./styles.css" />
@@ -20,7 +21,7 @@
   <!-- 一人称のゴーグルの枠（一人称のときだけ。操作は下の絵に通す） -->
   <div id="fp-goggle" aria-hidden="true"><i></i></div>
   <div id="labels" aria-hidden="true"></div>
-  <div id="lbl-key" hidden>
+  <div id="lbl-key" hidden data-cut>
     <span class="kk inp">入力＝自分でつくる</span>
     <span class="kk res">結果＝力学で決まる</span>
   </div>
@@ -94,25 +95,23 @@
       </div>
       <div class="toggles">
         <label><input type="checkbox" id="tg-moves" checked /> やることの矢印</label>
-        <label><input type="checkbox" id="tg-body" checked /> 身体</label>
+        <label data-cut><input type="checkbox" id="tg-body" checked /> 身体</label>
         <label><input type="checkbox" id="tg-pelvis" checked /> 骨盤の色分け</label>
-        <label><input type="checkbox" id="tg-skeleton" checked /> 骨（X線のとき）</label>
-        <label><input type="checkbox" id="tg-gates" checked /> ポール</label>
+        <label data-cut><input type="checkbox" id="tg-skeleton" checked /> 骨（X線のとき）</label>
+        <label data-cut><input type="checkbox" id="tg-gates" checked /> ポール</label>
       </div>
     </details>
 
     <details class="block" id="blk-physics">
       <summary>力と角度・くらべる</summary>
-      <h3 class="sub">物理</h3>
       <div class="toggles">
         <label><input type="checkbox" id="tg-forces" /> 力のベクトル</label>
         <label><input type="checkbox" id="tg-angles" /> 角度ガイド</label>
-        <label><input type="checkbox" id="tg-track" /> シュプール</label>
+        <label data-cut><input type="checkbox" id="tg-track" /> シュプール</label>
       </div>
-      <h3 class="sub">くらべる</h3>
       <div class="toggles">
         <label><input type="checkbox" id="tg-ghost" /> 外向なしの人</label>
-        <label><input type="checkbox" id="tg-muscles" /> 筋肉</label>
+        <label data-cut><input type="checkbox" id="tg-muscles" /> 筋肉</label>
       </div>
     </details>
 
@@ -130,13 +129,13 @@
         <span>滑走速度<b id="out-speed">—</b></span>
         <input type="range" id="rng-speed" min="15" max="90" step="1" />
       </label>
-      <label class="slider">
+      <label class="slider" data-cut>
         <span>斜度<b id="out-slope">—</b></span>
         <input type="range" id="rng-slope" min="8" max="35" step="1" />
       </label>
     </details>
 
-    <details class="block input">
+    <details class="block input" data-cut>
       <summary>コース（FIS 準拠）</summary>
       <label class="slider">
         <span>ポール間隔<b id="out-gate">—</b></span>
@@ -149,7 +148,7 @@
       <p class="rule" id="fis-check">—</p>
     </details>
 
-    <details class="block">
+    <details class="block" data-cut>
       <summary>カメラ</summary>
       <div class="chips" id="camera-presets">
         <button class="chip" data-cam="follow">追従</button>
@@ -169,7 +168,7 @@
     <nav id="rp-tabs" role="tablist" aria-label="右パネル">
       <button role="tab" data-tab="now" aria-selected="true">いま</button>
       <button role="tab" data-tab="pelvis" aria-selected="false">骨盤</button>
-      <button role="tab" data-tab="nums" aria-selected="false">数値</button>
+      <button role="tab" data-tab="nums" aria-selected="false" data-cut>数値</button>
       <button role="tab" data-tab="trend" aria-selected="false">推移</button>
     </nav>
 
@@ -200,7 +199,7 @@
         <h2>骨盤まわりの動き</h2>
         <div class="motions" id="pelvis-motions"></div>
       </div>
-      <details class="block">
+      <details class="block" data-cut>
         <summary>外脚の股関節（くわしく）</summary>
         <div class="motions" id="hip-motions"></div>
         <p class="hint">骨盤から見た大腿骨の向きです。<b>外向</b>は骨盤を外へ回すので、
@@ -289,38 +288,24 @@
       <div class="help-grid">
         <div>
           <h3>外向（がいこう）</h3>
-          <p>骨盤・上体を<b>ターンの外側</b>へ向けること。スキーの進行方向と骨盤の正面がつくる角度が<b>外向角</b>です。山回りで大きく、切り替えでほどけます。</p>
+          <p>骨盤を<b>ターンの外側</b>へ向けること。スキーの向きと骨盤の正面の開き（<b>外向角</b>）は、山回りで大きく、切り替えでほどけます。</p>
           <h3>外傾（がいけい）</h3>
-          <p>腰から上を<b>外側へ横に曲げる</b>こと。内傾（体全体の傾き）に外傾を足すと、身体を倒しすぎずにエッジ角を増やせます。</p>
-          <h3>いま、やること（黄色い矢印）</h3>
-          <p>黄色は「いま、これをする」だけに使います。<b>かんたん</b>では局面ごとに決めた指示を 1 つ、下のカードと矢印に出します。
-            <b>くわしく</b>では、<b>少し先の姿勢との差</b>から計算した動きを速い順に 3 つ、右の「いま」に出します。</p>
+          <p>腰から上を<b>外側へ横に曲げる</b>こと。体を倒しすぎずに、エッジ角を増やせます。</p>
           <h3>内傾（ないけい）</h3>
-          <p>遠心力と重力の合力の向きに身体が倒れる角度。<b>力学で決まる</b>ので自分では自由に選べません。</p>
-          <h3>入力と結果（色の約束）</h3>
-          <p><span class="kk inp">入力</span> 自分でつくる量（外向・外傾の大きさ・速度）。くわしく表示の「姿勢をいじる」で変えられます。<br>
-            <span class="kk res">結果</span> 力学で決まる量（内傾角・エッジ角・雪からの力）。つまみはなく、入力を変えると<b>勝手に</b>変わります。<br>
-            <span class="kk asm">想定</span> お手本の滑りごとに置いた仮定（外脚の荷重配分・圧の前後位置）。</p>
+          <p>体全体の傾き。速さとターンの大きさで<b>力学的に決まる</b>ので、自分では自由に選べません。</p>
         </div>
         <div>
-          <h3>骨盤の色分け</h3>
-          <ul class="bonelist" id="bone-legend"></ul>
-          <h3>見え方（くわしく →「表示」）</h3>
-          <p><b>選手</b> 不透明なスーツだけ。<b>骨盤を透視</b>（既定）スーツの骨盤のまわりだけを透かす。
-            <b>X線</b> 半透明の身体と骨格。筋肉を出すと X線 に切り替わります。</p>
-          <h3>かんたん／くわしく</h3>
-          <p>はじめは<b>かんたん</b>（滑りと「いま、やること」だけ）。指導者は上の「くわしく」か <kbd>D</kbd> キー、
-            または URL に <code>?mode=detail</code> を付けて開くと、数値・グラフ・表示の切り替えが出ます。選んだほうを次回も使います。</p>
-          <h3>はじめのガイド</h3>
+          <h3>使い方</h3>
+          <p><b>黄色い矢印と下のカード</b>が「いま、やること」です。<b>かんたん</b>は滑りとカードだけ、
+            <b>くわしく</b>（指導者向け）は外向・外傾を変えたり、外向なしの人と並べたりできます。</p>
           <p><button class="ghost" id="btn-tour-again">はじめのガイドをもう一度</button></p>
           <h3>動画と比べる</h3>
-          <p>選手の滑りの動画を選ぶと、骨格を取ってお手本と同じ位相で重ねて比べます（体の傾き・外傾・肩のライン）。
-            動画はこの端末の中だけで解析し、どこにも送りません。<a class="ghost linkbtn" href="./compare.html">動画とお手本を比べる →</a></p>
-          <h3>キーボード（操作）</h3>
-          <p><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>1</kbd>うしろから <kbd>2</kbd>自分の目線 <kbd>3</kbd>骨盤アップ　<kbd>D</kbd> かんたん/くわしく　<kbd>S</kbd> SL/GS切替　<kbd>F</kbd> 力ベクトル　<kbd>H</kbd> このヘルプ　<kbd>Esc</kbd> 閉じる</p>
+          <p>滑りの動画から骨格を取り、お手本と重ねて比べます（動画は端末の外に送りません）。
+            <a class="ghost linkbtn" href="./compare.html">動画とお手本を比べる →</a></p>
+          <p class="hint"><kbd>Space</kbd> 再生/停止　<kbd>←</kbd><kbd>→</kbd> コマ送り　<kbd>D</kbd> かんたん/くわしく　<kbd>H</kbd> ヘルプ</p>
+          <ul class="bonelist" id="bone-legend" data-cut></ul>
         </div>
       </div>
-      <p class="sources">数値の出典：FIS International Ski Competition Rules (ICR) 801/901条、FIS Specifications for Alpine Competition Equipment 2024/25、身体寸法は Drillis &amp; Contini (1966) / Winter (2009)。詳細は <code>docs/REFERENCES.md</code>。</p>
     </div>
   </div>
 

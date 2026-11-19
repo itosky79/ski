@@ -91,8 +91,26 @@ const START_PHASE = 1.72;
 
 /* ---------- 3D 基本セット ---------- */
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+/* 描画が落ちたとき（WebGL のコンテキスト喪失）の備え。
+ * GPU の負荷やドライバの都合で、しばらく動いたあとに 3D だけが消えることがある（Windows で報告あり）。
+ * 落ちたら「軽い描画」の印を付けて読み込み直す。軽い描画では解像度・影・アンチエイリアスを落とす。 */
+const LOW_KEY = 'skiTrainer.lowgfx';
+let lowGfx = false;
+try { lowGfx = window.sessionStorage.getItem(LOW_KEY) === '1' || /[?&]low=1/.test(window.location.search); } catch { /* なし */ }
+function showNotice(text) {
+  const e = document.getElementById('error');
+  if (!e) return;
+  e.hidden = false;
+  e.textContent = text;
+}
+canvas.addEventListener('webglcontextlost', (ev) => {
+  ev.preventDefault();
+  try { window.sessionStorage.setItem(LOW_KEY, '1'); } catch { /* 保存できなくても読み込み直す */ }
+  showNotice('3D の描画が止まりました（パソコンの GPU の都合）。軽い描画で読み込み直します…');
+  setTimeout(() => window.location.reload(), 1500);
+}, false);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowGfx, powerPreference: lowGfx ? 'default' : 'high-performance' });
+renderer.setPixelRatio(lowGfx ? 1 : Math.min(2, window.devicePixelRatio || 1));
 
 const scene = new THREE.Scene();
 
@@ -103,6 +121,7 @@ scene.add(camera);
  * スキーヤーを作る前に環境マップが要るので、ここで作っておく。 */
 const world = new World(renderer, scene, camera);
 let envMap = world.envMap;
+if (lowGfx) renderer.shadowMap.enabled = false;
 
 /* ---------- モデル ---------- */
 let disc = DISCIPLINES[app.discipline];
@@ -628,7 +647,19 @@ function updateCoach(s) {
   ui.drawCompass(s, ui.coachCtx, { mini: true });
 }
 
+/* 1 フレームの処理でエラーが出ても、次のフレームは描く（止まったまま真っ白にならないように）。
+ * エラーは最初の 1 回だけ画面の下に出す（原因を教えてもらえるように） */
+let tickErrors = 0;
 function tick() {
+  requestAnimationFrame(tick);
+  try { frame(); } catch (err) {
+    if (tickErrors++ === 0) {
+      console.error(err);
+      showNotice('描画中にエラーが出ました（動き続けます）:\n' + (err && err.message ? err.message : err));
+    }
+  }
+}
+function frame() {
   const dt = Math.min(0.05, clock.getDelta());
   resize();
   // DOM を書き換える前に読む（書いた後に読むと、毎フレームレイアウトをやり直させてしまう）
@@ -689,7 +720,6 @@ function tick() {
                 camRig.mode === 'pelvis' ? 130 : (size.w < 820 ? 76 : 96), labelMax(),
                 Math.max(54, occ.bottom + 10));
   ui.setLabelKey(labels.shownIO);
-  requestAnimationFrame(tick);
 }
 
 /* ---------- はじめのガイド ---------- */
