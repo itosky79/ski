@@ -260,3 +260,32 @@ export const PHASES = [
   },
 ];
 
+
+/* TurnModel に渡す値を種目とお手本の滑りから組み立てる。
+ * 3D の画面（main.js）と動画との比較（src/compare/）の両方で同じお手本を使うため、ここにまとめる。
+ * ghost が true なら外向・外傾なし（内傾だけ）の比較用。 */
+export function turnModelParams(d, levelKey = 'racer', { ghost = false } = {}) {
+  const lv = LEVELS[levelKey];
+  return {
+    slopeDeg: d.slopeDeg,
+    speedKmh: Math.round(d.speedKmh * lv.speedScale),
+    gateSpacing: d.gateSpacing,
+    offset: d.offset,
+    gateWidth: d.gateWidth,
+    counterDeg: ghost ? 0 : Math.round(d.counterDeg * lv.counterScale),
+    angulationDeg: ghost ? 0 : Math.round(d.angulationDeg * lv.angulationScale),
+    platformDeg: d.platformDeg,
+    stanceWidth: d.stanceWidth,
+    glideFactor: d.glideFactor, glideAmp: d.glideAmp,
+    skew: d.skew, gateLag: d.gateLag,
+    outerShareMax: d.outerShareMax, outerShareLate: d.outerShareLate,
+    gammaPelvis: d.gammaPelvis, activePelvis: d.activePelvis,
+    gammaSpine: d.gammaSpine, activeSpine: d.activeSpine,
+    innerEdgeExtraDeg: d.innerEdgeExtraDeg, leadFactor: d.leadFactor,
+    blockSigmaBefore: d.blockSigmaBefore, blockSigmaAfter: d.blockSigmaAfter,
+    blockStrength: d.blockStrength, blockHeight: d.blockHeight,
+    leadToPelvis: d.leadToPelvis,
+    skiSidecutR: d.skiSidecutR,
+    height: ANTHRO.height, mass: ANTHRO.mass,
+  };
+}

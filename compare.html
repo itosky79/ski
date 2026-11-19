@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>動画とお手本を比べる — 外向・外傾 3Dトレーナー</title>
+<meta name="description" content="選手の滑りの動画から 2D の骨格を取り、このアプリのお手本（力学モデル）と同じターンの位相で重ねて比べる。動画はブラウザの中だけで処理し、どこにも送らない。" />
+<link rel="stylesheet" href="./styles.css" />
+<link rel="stylesheet" href="./compare.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+</head>
+<body class="compare">
+<header class="cmp-top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="15.6" cy="3.7" r="2.2" fill="currentColor" />
+      <path d="M6.4 8.6l5.4-1.5 2.3 3.3-3.3 2.9 2.4 3.9M11.8 7.1l-1.2 4.1" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M2.8 16.9l17.6 4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+    </svg>
+    <span class="titles">
+      <strong>動画とお手本を比べる</strong>
+      <small>外向・外傾 3Dトレーナー</small>
+    </span>
+  </div>
+  <a class="ghost" href="./index.html">← 3D のお手本へ</a>
+</header>
+
+<main class="cmp-main">
+  <section class="cmp-card intro">
+    <p>選手の滑りの動画から<b>骨格（2D）</b>を取り、このアプリのお手本（力学モデル）を<b>ターンの同じ位相</b>で重ねて比べます。
+      選手は<span class="sw you"></span>オレンジ、お手本は<span class="sw model"></span>水色で描きます。</p>
+    <p class="privacy"><b>動画はどこにも送りません。</b>解析はすべてこのブラウザの中で行います。
+      ネットから読むのは骨格の検出プログラムと学習済みモデル（初回だけ、約 10〜30 MB）だけです。</p>
+  </section>
+
+  <section class="cmp-card">
+    <h2>1. 動画を選ぶ</h2>
+    <div class="row">
+      <label class="filebtn ghost">動画ファイルを選ぶ<input type="file" id="file" accept="video/*" /></label>
+      <span id="file-name" class="dim">まだ選んでいません</span>
+    </div>
+    <div class="row">
+      <span class="pair"><span class="lbl-inline">種目</span>
+      <div class="topgroup" id="disc-group" role="group" aria-label="種目">
+        <button class="seg" data-discipline="SL" aria-pressed="false">スラローム<small>SL</small></button>
+        <button class="seg" data-discipline="GS" aria-pressed="true">大回転<small>GS</small></button>
+      </div></span>
+      <span class="pair"><span class="lbl-inline">検出の精度</span>
+      <div class="topgroup" id="quality-group" role="group" aria-label="検出の精度">
+        <button class="seg" data-quality="full" aria-pressed="true">ふつう<small>速い</small></button>
+        <button class="seg" data-quality="heavy" aria-pressed="false">高精度<small>遅い</small></button>
+      </div></span>
+    </div>
+    <div class="row">
+      <button id="btn-run" class="primary" disabled>解析する</button>
+      <button id="btn-cancel" class="ghost" hidden>やめる</button>
+      <div class="progress" id="progress" hidden><i></i><span></span></div>
+    </div>
+    <details class="tips" open>
+      <summary>撮り方のコツ（比べやすい動画）</summary>
+      <ul>
+        <li><b>斜面の真下から</b>、選手が正面から向かってくるように撮る（横から撮ると、左右のターンで角度が大きく変わります）</li>
+        <li>カメラは<b>水平</b>に。見上げ・見下ろしが強いと角度がずれます</li>
+        <li><b>全身（足首まで）</b>が画面に入るように。アップで足が切れたコマは使いません</li>
+        <li>1 人だけが大きく写っている動画が向いています。途中の場面の切り替え（カット）は自動で飛ばします</li>
+        <li>スロー撮影も使えます（コマが多いほど細かく比べられます）。2 ターン以上入っていると左右を比べられます</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="cmp-card" id="sec-video" hidden>
+    <h2>2. 重ねて見る</h2>
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted preload="auto"></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="transport">
+      <button id="btn-play" class="ghost" aria-label="再生">▶ 再生</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="動画の位置" />
+      <span id="time" class="dim">0.0 秒</span>
+      <div class="topgroup" id="rate-group" role="group" aria-label="再生の速さ">
+        <button class="seg" data-rate="1" aria-pressed="false">1×</button>
+        <button class="seg" data-rate="0.5" aria-pressed="false">½</button>
+        <button class="seg" data-rate="0.25" aria-pressed="true">¼</button>
+      </div>
+    </div>
+    <div class="readout" id="readout">解析すると、ここに今のコマの角度が出ます。</div>
+    <div class="legend">
+      <span><span class="sw you"></span>選手（動画から）</span>
+      <span><span class="sw model"></span>お手本（同じ位相・足首の中点と体の大きさを合わせて重ねる）</span>
+    </div>
+  </section>
+
+  <section class="cmp-card" id="sec-result" hidden>
+    <h2>3. 違いのまとめ</h2>
+    <p id="speed-line" class="speed-line"></p>
+    <div class="row">
+      <span class="lbl-inline">お手本の速さを手で変える</span>
+      <input type="range" id="speed" min="25" max="80" step="1" value="45" aria-label="お手本の速さ" />
+      <span id="speed-val">45 km/h</span>
+      <button id="btn-auto" class="ghost">自動に戻す</button>
+    </div>
+    <div id="warnings"></div>
+    <ul id="summary" class="summary"></ul>
+    <p class="caveat">
+      これは<b>画面の上の 2D の角度</b>です。カメラの位置やパンで数度は変わります。骨盤の向き（<b>外向</b>）は 2D の動画からは測れません。
+      お手本は力学モデルから作った<b>理想形</b>で、選手を計測した正解ではありません。最後の判断は指導者が行ってください。
+    </p>
+
+    <h3>位相ごとの比べ（切り替え → 頂点 → 切り替え）</h3>
+    <p class="dim small">点＝選手（位相 0.1 ごとの平均、細い点は 1 コマずつ）、線＝お手本。左右のターンを分けて描きます。</p>
+    <div class="plots" id="plots"></div>
+    <details class="tips">
+      <summary>角度の決め方</summary>
+      <ul>
+        <li><b>体の傾き</b>：足首の中点 → 肩の中点 の線が、画面の鉛直から倒れている角度（内傾にあたる）</li>
+        <li><b>外傾</b>：脚（足首 → 腰）の傾きと、上体（腰 → 肩）の傾きの差。上体が脚より起きていると ＋</li>
+        <li><b>肩のライン</b>：左右の肩を結ぶ線の傾き。傾いている側（ターンの内側）の肩が下がると ＋</li>
+        <li><b>位相</b>：体の傾きの向きが変わる所を切り替え（0）とし、次の切り替えまでを 0〜1 にする。0.5 が頂点付近</li>
+        <li><b>お手本の速さ</b>：お手本の体の傾き（内傾）は速さでほぼ決まるので、頂点付近の体の傾きが選手と同じになる速さを選んでいます。
+          そのうえで残る違いが、速さではなく技術の違いの候補です</li>
+      </ul>
+    </details>
+  </section>
+
+  <div id="cmp-error" class="cmp-error" hidden></div>
+</main>
+
+<script type="module" src="./src/compare/main.js"></script>
+</body>
+</html>

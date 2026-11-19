@@ -1,0 +1,85 @@
+/* ===========================================================
+   動画とお手本を比べる（compare.html）— styles.css の色の約束をそのまま使い、
+   3D の画面と違ってふつうに縦へスクロールするページにする
+   =========================================================== */
+:root{
+  --you:#ff9f40;       /* 選手（動画から取った骨格） */
+  --model:#4cc3ff;     /* お手本（力学モデル）＝ --accent と同じ水色 */
+}
+body.compare{overflow:auto;height:auto;min-height:100%}
+.cmp-top{
+  position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;
+  background:rgba(6,11,19,.94);border-bottom:1px solid var(--panel-b);
+}
+.cmp-top a.ghost{text-decoration:none;white-space:nowrap}
+.cmp-main{max-width:1100px;margin:0 auto;padding:14px 16px 40px;display:flex;flex-direction:column;gap:14px}
+.cmp-card{background:var(--panel);border:1px solid var(--panel-b);border-radius:var(--radius);padding:14px 16px}
+.cmp-card h2{margin:0 0 10px;font-size:15px}
+.cmp-card h3{margin:16px 0 4px;font-size:13px;color:var(--accent)}
+.cmp-card p{margin:0 0 8px;color:#cfdcec}
+.cmp-card p:last-child{margin-bottom:0}
+.intro .privacy{border-left:3px solid var(--inner);padding-left:10px}
+.dim{color:var(--fg-dim)}
+.small{font-size:12px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 10px}
+.lbl-inline{font-size:12px;color:var(--fg-dim);font-weight:700}
+
+/* ファイル選択：input は見えなくして、ボタンの見た目にする */
+.filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.primary{
+  appearance:none;border:0;border-radius:999px;padding:8px 18px;font:inherit;font-weight:800;font-size:13px;
+  background:var(--accent);color:#04131d;cursor:pointer;box-shadow:0 2px 10px rgba(76,195,255,.35);
+}
+.primary:disabled{opacity:.4;cursor:default;box-shadow:none}
+
+.progress{position:relative;flex:1 1 220px;min-width:160px;height:22px;border-radius:999px;
+  background:rgba(255,255,255,.07);overflow:hidden;border:1px solid var(--panel-b)}
+.progress i{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(76,195,255,.45);transition:width .2s}
+.progress span{position:relative;display:block;text-align:center;font-size:11.5px;line-height:20px;font-weight:700}
+
+.tips{margin-top:6px;font-size:12.5px;color:#cfdcec}
+.tips summary{cursor:pointer;font-weight:700;color:var(--fg)}
+.tips ul{margin:6px 0 0;padding-left:20px}
+.tips li{margin:3px 0}
+
+/* 動画と重ね描き */
+.stage{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden}
+.stage video{display:block;width:100%;height:auto;max-height:70vh;object-fit:contain}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.transport{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.transport input[type=range]{flex:1 1 200px;min-width:120px;accent-color:var(--accent)}
+#time{min-width:64px;font-variant-numeric:tabular-nums;font-size:12px}
+.readout{margin-top:8px;font-size:12.5px;color:#cfdcec;font-variant-numeric:tabular-nums;min-height:2.4em}
+.readout b.you{color:var(--you)}
+.readout b.model{color:var(--model)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;font-size:12px;color:var(--fg-dim)}
+.sw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin:0 5px 2px 2px}
+.sw.you{background:var(--you)}
+.sw.model{background:var(--model)}
+
+/* まとめ */
+.speed-line{font-size:13.5px}
+.speed-line b{color:var(--model)}
+#speed{flex:1 1 160px;accent-color:var(--model)}
+.summary{margin:8px 0 10px;padding-left:20px;font-size:14px}
+.summary li{margin:5px 0}
+.warn{margin:8px 0;padding:8px 12px;border-radius:8px;background:rgba(255,209,102,.12);
+  border:1px solid rgba(255,209,102,.45);font-size:13px}
+.caveat{font-size:12px;color:var(--fg-dim)!important;border-top:1px solid var(--panel-b);padding-top:8px;margin-top:6px}
+
+/* 位相ごとのグラフ：横に 2 列（左右のターン）、縦に量ごと */
+.plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.plot{background:rgba(0,0,0,.18);border:1px solid var(--panel-b);border-radius:10px;padding:8px 8px 4px}
+.plot h4{margin:0 0 2px;font-size:12px;font-weight:700}
+.plot canvas{display:block;width:100%;height:170px}
+.cmp-error{padding:12px 14px;border-radius:10px;background:rgba(120,20,20,.85);color:#fff;white-space:pre-wrap;font-size:12px}
+
+@media (max-width:820px){
+  .brand .titles{display:flex}
+  .plots{grid-template-columns:minmax(0,1fr)}
+  .cmp-card{padding:12px}
+}
+.warn-inline{color:var(--accent-2);font-size:12.5px}
+.pair{display:inline-flex;align-items:center;gap:8px}

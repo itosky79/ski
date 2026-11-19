@@ -551,3 +551,5 @@ body.view-first #fp-goggle{display:block}
   body.mode-simple #tour{bottom:calc(72px + var(--coach-h,100px) + env(safe-area-inset-bottom,0px))}
   #fp-goggle i{width:94%;height:80%;top:50%}
 }
+/* ヘルプの中のページへのリンク（動画とお手本を比べる） */
+.linkbtn{display:inline-block;margin-top:6px;text-decoration:none}
