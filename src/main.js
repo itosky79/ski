@@ -15,7 +15,7 @@
  *   ES モジュールのリンクで失敗し、アプリ全体が真っ白になる。?.() なら、まだない機能は何もしないだけで済む。
  */
 import * as THREE from 'three';
-import { DISCIPLINES, LEVELS, ANTHRO, PHASES } from './constants.js';
+import { DISCIPLINES, ANTHRO, PHASES, turnModelParams } from './constants.js';
 import { TurnModel } from './kinematics.js';
 import { createSkier } from './skier.js';
 import { Course } from './course.js';
@@ -110,29 +110,7 @@ let model = makeModel(disc);
 let ghostModel = makeModel(disc, true);
 
 function makeModel(d, ghost = false) {
-  const lv = LEVELS[app.level];
-  return new TurnModel({
-    slopeDeg: d.slopeDeg,
-    speedKmh: Math.round(d.speedKmh * lv.speedScale),
-    gateSpacing: d.gateSpacing,
-    offset: d.offset,
-    gateWidth: d.gateWidth,
-    counterDeg: ghost ? 0 : Math.round(d.counterDeg * lv.counterScale),
-    angulationDeg: ghost ? 0 : Math.round(d.angulationDeg * lv.angulationScale),
-    platformDeg: d.platformDeg,
-    stanceWidth: d.stanceWidth,
-    glideFactor: d.glideFactor, glideAmp: d.glideAmp,
-    skew: d.skew, gateLag: d.gateLag,
-    outerShareMax: d.outerShareMax, outerShareLate: d.outerShareLate,
-    gammaPelvis: d.gammaPelvis, activePelvis: d.activePelvis,
-    gammaSpine: d.gammaSpine, activeSpine: d.activeSpine,
-    innerEdgeExtraDeg: d.innerEdgeExtraDeg, leadFactor: d.leadFactor,
-    blockSigmaBefore: d.blockSigmaBefore, blockSigmaAfter: d.blockSigmaAfter,
-    blockStrength: d.blockStrength, blockHeight: d.blockHeight,
-    leadToPelvis: d.leadToPelvis,
-    skiSidecutR: d.skiSidecutR,
-    height: ANTHRO.height, mass: ANTHRO.mass,
-  });
+  return new TurnModel(turnModelParams(d, app.level, { ghost }));
 }
 
 const course = new Course(scene);
