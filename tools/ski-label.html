@@ -6,15 +6,12 @@
 <link rel="icon" href="data:," />
 <title>スキー板のラベル付け</title>
 <!--
-  スキー板のラベル付け（線を引くだけ版）
-  ・板 1 本につき、端から端まで線を 1 本引くだけ。左右・トップ/テール・ブーツの位置は自動で決める
-      左右     ：線が左足・右足（下書きの足の位置、白い丸）のどちらに近いか
-      トップ   ：線の両端のうち、ブーツから遠いほう（ビンディングは板の中央より後ろにあるため）。
-                 2 本が逆向きになったら、どちらか自信の低いほうを裏返して揃える
-      ブーツ   ：足の位置を線の上に落とした点
-    自動が違うときだけ F（トップとテールを入れ替え）や足の丸を動かして直す
+  スキー板のラベル付け（線を引く版）
+  ・板 1 本につき、トップ（先端）から後ろへ線を 1 本引く。1 本目＝右足の板、2 本目＝左足の板（選手自身の左右）
+  ・自動の判断はしない（色は引いた順で決まり、トップは引き始めの端）。ブーツの位置はアプリ側で骨格の足首から求める
+  ・直すときは線の端をドラッグ。F でトップとテールを入れ替え、Delete で消す、S で左右を入れ替え
   ・インターネットにつながず、このパソコンの中だけで動く。同じフォルダの draft.js と frames/ を読む
-  ・作業はブラウザに自動保存。「書き出す」で labels.json（COCO 形式、6 点）を保存
+  ・作業はブラウザに自動保存。「書き出す」で labels.json（COCO 形式、4 点）を保存
 -->
 <style>
   :root { --bg:#0f141b; --panel:#18202b; --line:#2a3545; --ink:#e7edf5; --mute:#93a1b3; --acc:#4cc2ff;
@@ -36,7 +33,7 @@
   .mute { color:var(--mute); font-size:12px; }
   kbd { background:#0b0f14; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:12px; }
   .keys p { margin:3px 0; font-size:12px; color:var(--mute); }
-  .how { font-size:13px; } .how b.L { color:var(--L); } .how b.R { color:var(--R); }
+  .how { font-size:13px; } .how .L { color:var(--L); } .how .R { color:var(--R); }
   .status { font-weight:700; } .status.done { color:#6be39a; } .status.skip { color:var(--warn); }
   #msg { min-height:1.4em; color:var(--warn); font-size:12px; }
   @media (max-width: 900px) { #wrap { grid-template-columns:1fr; } }
@@ -62,16 +59,17 @@
     </div>
     <div>このコマ：<span id="st" class="status">—</span> <span id="file" class="mute"></span></div>
     <div class="how">
-      <p><b>板 1 本につき、端から端まで線を引く</b>だけです（2 本）。下書きの線が合っていれば、そのまま <kbd>Enter</kbd>。</p>
-      <p>色（<b class="L">左</b>／<b class="R">右</b>）と矢印（＝トップ）は自動で付きます。白い丸は足の位置です。</p>
+      <p id="nextline" style="font-size:15px;font-weight:700">—</p>
+      <p><b>トップ（先端）から後ろへ</b>ドラッグ。<b>1 本目＝<span class="R">右足</span></b>、<b>2 本目＝<span class="L">左足</span></b>の板。</p>
+      <p class="mute">右足・左足は<b>選手自身</b>の左右です。こちらへ滑ってくる選手なら、右足の板は<b>画面の左側</b>です。</p>
     </div>
     <div id="msg"></div>
     <div class="keys">
-      <p>線の端をドラッグ＝端を動かす　何もない所からドラッグ＝新しく引く（近いほうの線と入れ替え）</p>
+      <p>線の端をドラッグ＝端を動かす（2 本とも引いた後に引くと、近いほうと入れ替え）</p>
       <p><kbd>Enter</kbd> OK・次へ　<kbd>←</kbd><kbd>→</kbd> 前／次</p>
-      <p><kbd>F</kbd> 最後に触った線のトップとテールを入れ替え（矢印が逆のとき）</p>
-      <p><kbd>Delete</kbd> 最後に触った線を消す（板が 1 本しか見えないとき）</p>
-      <p><kbd>X</kbd> 使えないコマ（選手でない・板が写っていない・ぶれている）　<kbd>Z</kbd> 下書きに戻す</p>
+      <p><kbd>F</kbd> 最後に触った線のトップとテールを入れ替え　<kbd>S</kbd> 左右を入れ替え</p>
+      <p><kbd>Delete</kbd> 最後に触った線を消す（板が 1 本しか見えないときは、見える足の線だけ）</p>
+      <p><kbd>X</kbd> 使えないコマ（選手でない・板が写っていない・ぶれている）　<kbd>Z</kbd> このコマを消してやり直す</p>
       <p><kbd>Space</kbd> 押している間、線を隠して画像だけ見る</p>
     </div>
   </aside>
@@ -84,69 +82,33 @@
   const D = window.SKI_DRAFT;
   if (!D) { document.body.innerHTML = '<p style="padding:20px">draft.js が見つかりません。このページと同じフォルダに draft.js と frames/ を置いてください。</p>'; return; }
   const SIZE = D.size || 640, GOAL = D.goal || 80;
-  const KEY = 'skiLabel2.' + (D.id || 'default');
-  const NAMES = ['L_tip', 'L_boot', 'L_tail', 'R_tip', 'R_boot', 'R_tail'];
-  const COL = { L: '#ff9a3c', R: '#3fd6ff' };
+  const KEY = 'skiLabel3.' + (D.id || 'default');
+  const NAMES = ['L_tip', 'L_tail', 'R_tip', 'R_tail'];
+  const COL = { R: '#3fd6ff', L: '#ff9a3c' }, JP = { R: '右', L: '左' };
 
-  /* ---------- 1 コマの状態：{ lines:[{a,b,manual}], feet:{L,R}, status } ---------- */
-  const clone = (x) => JSON.parse(JSON.stringify(x));
-  const fromDraft = (it, useSeed = true) => {
-    const src = useSeed && it.seed?.lines ? it.seed : it;
-    const feet = clone(src.feet || it.feet || {});
-    if (!feet.L) feet.L = [SIZE * 0.58, SIZE * 0.72];
-    if (!feet.R) feet.R = [SIZE * 0.42, SIZE * 0.72];
-    // 前に名前付きで付けた線は向きもそのまま（manual）
-    const lines = (src.lines || []).map(([a, b]) => ({ a: [...a], b: [...b], manual: !!(useSeed && it.seed?.lines) }));
-    return { lines, feet, status: useSeed ? (it.seed?.status || 'todo') : 'todo' };
+  /* 1 コマの状態：{ R:{a,b}|null, L:{a,b}|null, status }（a がトップ） */
+  const empty = () => ({ R: null, L: null, status: 'todo' });
+  const fromSeed = (it) => {
+    const sd = it.seed; if (!sd) return empty();
+    if (sd.status === 'skip') return { R: null, L: null, status: 'skip' };
+    // 前回分：lines は [L, R] の順、各 [トップ, テール]
+    const [l, r] = sd.lines;
+    return { L: l ? { a: l[0], b: l[1] } : null, R: r ? { a: r[0], b: r[1] } : null, status: sd.status };
   };
   let S = {};
   try { S = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { S = {}; }
-  const st = (i) => (S[D.items[i].file] ??= fromDraft(D.items[i]));
+  const st = (i) => (S[D.items[i].file] ??= fromSeed(D.items[i]));
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { $('msg').textContent = 'ブラウザに保存できません。こまめに「書き出す」で保存してください。'; } };
+  const sub = (p, q) => [p[0] - q[0], p[1] - q[1]], len = (v) => Math.hypot(v[0], v[1]);
 
-  /* ---------- 自動で決める：左右・トップ・ブーツ ---------- */
-  const sub = (p, q) => [p[0] - q[0], p[1] - q[1]], dot = (p, q) => p[0] * q[0] + p[1] * q[1];
-  const len = (v) => Math.hypot(v[0], v[1]);
-  function project(f, a, b) {           // 足 f を線分 ab に落とした点と、a からの割合
-    const d = sub(b, a), L2 = dot(d, d) || 1;
-    const t = Math.max(0, Math.min(1, dot(sub(f, a), d) / L2));
-    return { p: [a[0] + d[0] * t, a[1] + d[1] * t], t, dist: len(sub(f, [a[0] + d[0] * t, a[1] + d[1] * t])) };
-  }
-  function solve(s) {
-    const ls = s.lines;
-    // 左右：2 本なら、足との距離の合計が小さい組み合わせ
-    let side = [];
-    if (ls.length === 2) {
-      const c1 = project(s.feet.L, ls[0].a, ls[0].b).dist + project(s.feet.R, ls[1].a, ls[1].b).dist;
-      const c2 = project(s.feet.R, ls[0].a, ls[0].b).dist + project(s.feet.L, ls[1].a, ls[1].b).dist;
-      side = c1 <= c2 ? ['L', 'R'] : ['R', 'L'];
-    } else if (ls.length === 1) {
-      side = [project(s.feet.L, ls[0].a, ls[0].b).dist <= project(s.feet.R, ls[0].a, ls[0].b).dist ? 'L' : 'R'];
-    }
-    // トップ：ブーツから遠い端（manual のときは a がトップ）
-    const out = ls.map((l, i) => {
-      const pr = project(s.feet[side[i]], l.a, l.b);
-      const conf = Math.abs(pr.t - 0.5);   // 0.5 から離れているほど自信あり
-      const tipIsA = l.manual ? true : pr.t > 0.5;
-      return { side: side[i], tip: tipIsA ? l.a : l.b, tail: tipIsA ? l.b : l.a, boot: pr.p, conf, manual: l.manual, i };
-    });
-    // 2 本が逆向きなら、自信の低いほう（manual でないほう）を裏返す
-    if (out.length === 2 && dot(sub(out[0].tip, out[0].tail), sub(out[1].tip, out[1].tail)) < 0) {
-      const cand = out.filter((o) => !o.manual).sort((x, y) => x.conf - y.conf)[0];
-      if (cand) [cand.tip, cand.tail] = [cand.tail, cand.tip];
-    }
-    return out;
-  }
-
-  /* ---------- 描画 ---------- */
-  let cur = 0, hide = false, drag = null, last = 0;
+  let cur = 0, hide = false, drag = null, last = 'R';
   const img = new Image();
   function load(i) {
     cur = Math.max(0, Math.min(D.items.length - 1, i));
     img.onload = draw;
     img.onerror = () => { $('msg').textContent = '画像が読めません：frames/' + D.items[cur].file; draw(); };
     img.src = 'frames/' + D.items[cur].file;
-    $('msg').textContent = '';
+    $('msg').textContent = ''; last = 'R';
   }
   function arrow(p, q, col) {             // q→p の向きの矢印を p に
     const d = sub(p, q), L = len(d) || 1, u = [d[0] / L, d[1] / L], n = [-u[1], u[0]], s = 14;
@@ -155,32 +117,33 @@
     ctx.lineTo(p[0] - u[0] * s - n[0] * s * 0.6, p[1] - u[1] * s - n[1] * s * 0.6);
     ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
   }
+  const nextSide = (s) => (!s.R ? 'R' : !s.L ? 'L' : null);
   function draw() {
     const s = st(cur);
     ctx.clearRect(0, 0, SIZE, SIZE);
     if (img.complete && img.naturalWidth) ctx.drawImage(img, 0, 0, SIZE, SIZE);
     if (!hide && s.status !== 'skip') {
-      for (const k of ['L', 'R']) {        // 足（白い丸）
-        const f = s.feet[k];
-        ctx.beginPath(); ctx.arc(f[0], f[1], 9, 0, Math.PI * 2); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText(k === 'L' ? '左足' : '右足', f[0] + 11, f[1] + 4);
-      }
-      for (const o of solve(s)) {
-        const col = COL[o.side];
-        ctx.lineWidth = o.i === last ? 4 : 3; ctx.strokeStyle = col;
-        ctx.beginPath(); ctx.moveTo(o.tail[0], o.tail[1]); ctx.lineTo(o.tip[0], o.tip[1]); ctx.stroke();
-        arrow(o.tip, o.tail, col);
-        ctx.beginPath(); ctx.arc(o.tail[0], o.tail[1], 5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
-        ctx.fillStyle = '#000'; ctx.fillRect(o.boot[0] - 4, o.boot[1] - 4, 8, 8);
-        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(o.boot[0] - 4, o.boot[1] - 4, 8, 8);
+      for (const k of ['R', 'L']) {
+        const l = s[k]; if (!l) continue;
+        ctx.lineWidth = k === last ? 4 : 3; ctx.strokeStyle = COL[k];
+        ctx.beginPath(); ctx.moveTo(l.b[0], l.b[1]); ctx.lineTo(l.a[0], l.a[1]); ctx.stroke();
+        arrow(l.a, l.b, COL[k]);
+        ctx.beginPath(); ctx.arc(l.b[0], l.b[1], 5, 0, Math.PI * 2); ctx.fillStyle = COL[k]; ctx.fill();
+        ctx.font = 'bold 14px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+        ctx.strokeText(JP[k], l.a[0] + 8, l.a[1] - 10); ctx.fillStyle = COL[k]; ctx.fillText(JP[k], l.a[0] + 8, l.a[1] - 10);
       }
       if (drag?.kind === 'new') {
-        ctx.setLineDash([8, 6]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+        const col = COL[drag.side] || '#fff';
+        ctx.setLineDash([8, 6]); ctx.strokeStyle = col; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(...drag.a); ctx.lineTo(...drag.b); ctx.stroke(); ctx.setLineDash([]);
       }
     }
+    const ns = nextSide(s), nl = $('nextline');
+    if (s.status === 'skip') { nl.textContent = '使えないコマ'; nl.style.color = ''; }
+    else if (ns) { nl.textContent = `次に引く線：${JP[ns]}足の板（トップから）`; nl.style.color = COL[ns]; }
+    else { nl.textContent = '2 本とも引きました → Enter'; nl.style.color = '#6be39a'; }
     const t = $('st'); t.className = 'status ' + s.status;
-    t.textContent = { todo: '未確認', done: 'OK', skip: '使えないコマ' }[s.status] + (s.status !== 'skip' && s.lines.length < 2 ? `（線 ${s.lines.length} 本）` : '');
+    t.textContent = { todo: '未確認', done: 'OK', skip: '使えないコマ' }[s.status];
     $('file').textContent = D.items[cur].file;
     $('pos').textContent = `${cur + 1} / ${D.items.length}`;
     const done = D.items.filter((x) => (S[x.file]?.status ?? x.seed?.status ?? 'todo') !== 'todo').length;
@@ -190,43 +153,37 @@
     $('prev').disabled = cur === 0;
   }
 
-  /* ---------- 操作 ---------- */
   const toImg = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * SIZE / r.width, (e.clientY - r.top) * SIZE / r.height]; };
   const tol = () => 16 * SIZE / cv.getBoundingClientRect().width;
   cv.addEventListener('pointerdown', (e) => {
-    const s = st(cur), p = toImg(e), T = tol();
-    let best = null, bd = T;
-    s.lines.forEach((l, i) => { for (const end of ['a', 'b']) { const d = len(sub(l[end], p)); if (d < bd) { bd = d; best = { kind: 'end', i, end }; } } });
-    for (const k of ['L', 'R']) { const d = len(sub(s.feet[k], p)); if (d < bd) { bd = d; best = { kind: 'foot', k }; } }
-    drag = best || { kind: 'new', a: p, b: p };
-    if (drag.kind === 'end') last = drag.i;
+    const s = st(cur), p = toImg(e); let best = null, bd = tol();
+    for (const k of ['R', 'L']) { const l = s[k]; if (!l) continue; for (const end of ['a', 'b']) { const d = len(sub(l[end], p)); if (d < bd) { bd = d; best = { kind: 'end', k, end }; } } }
+    if (best) { drag = best; last = best.k; }
+    else {
+      let side = nextSide(s);
+      if (!side) {                         // 2 本ともあるとき：中点が近いほうと入れ替え
+        const mid = (l) => [(l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2];
+        side = len(sub(mid(s.R), p)) <= len(sub(mid(s.L), p)) ? 'R' : 'L';
+      }
+      drag = { kind: 'new', side, a: p, b: p };
+    }
     cv.setPointerCapture(e.pointerId); draw();
   });
   cv.addEventListener('pointermove', (e) => {
     if (!drag) return; const s = st(cur), p = toImg(e).map((v) => Math.max(0, Math.min(SIZE, v)));
-    if (drag.kind === 'end') s.lines[drag.i][drag.end] = p;
-    else if (drag.kind === 'foot') s.feet[drag.k] = p;
-    else drag.b = p;
+    if (drag.kind === 'end') s[drag.k][drag.end] = p; else drag.b = p;
     draw();
   });
   cv.addEventListener('pointerup', () => {
     if (!drag) return; const s = st(cur);
-    if (drag.kind === 'new' && len(sub(drag.a, drag.b)) > 12) {
-      const nl = { a: drag.a, b: drag.b, manual: false };
-      if (s.lines.length < 2) { s.lines.push(nl); last = s.lines.length - 1; }
-      else {                               // 中点が近いほうの線と入れ替え
-        const mid = (l) => [(l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2];
-        const i = len(sub(mid(s.lines[0]), mid(nl))) <= len(sub(mid(s.lines[1]), mid(nl))) ? 0 : 1;
-        s.lines[i] = nl; last = i;
-      }
-    }
+    if (drag.kind === 'new' && len(sub(drag.a, drag.b)) > 12) { s[drag.side] = { a: drag.a, b: drag.b }; last = drag.side; }
     drag = null; persist(); draw();
   });
 
   function confirmNext() {
     const s = st(cur);
     if (s.status !== 'skip') {
-      if (s.lines.length === 0) { $('msg').textContent = '線がありません。板が見えないコマは X（使えないコマ）にしてください。'; return; }
+      if (!s.R && !s.L) { $('msg').textContent = '線がありません。板が見えないコマは X（使えないコマ）にしてください。'; return; }
       s.status = 'done';
     }
     persist();
@@ -241,27 +198,22 @@
     else if (e.key === 'ArrowRight') load(cur + 1);
     else if (e.key === 'ArrowLeft') load(cur - 1);
     else if (e.key === 'x' || e.key === 'X') skip();
-    else if ((e.key === 'f' || e.key === 'F') && s.lines[last]) {
-      // いま表示している向きの逆を「手で決めた向き」にする
-      const o = solve(s).find((q) => q.i === last);
-      s.lines[last] = { a: o.tail, b: o.tip, manual: true }; persist(); draw();
-    }
-    else if ((e.key === 'Delete' || e.key === 'Backspace') && s.lines[last]) { s.lines.splice(last, 1); last = 0; persist(); draw(); }
-    else if (e.key === 'z' || e.key === 'Z') { S[D.items[cur].file] = fromDraft(D.items[cur], false); persist(); draw(); }
+    else if ((e.key === 'f' || e.key === 'F') && s[last]) { s[last] = { a: s[last].b, b: s[last].a }; persist(); draw(); }
+    else if (e.key === 's' || e.key === 'S') { [s.R, s.L] = [s.L, s.R]; persist(); draw(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && s[last]) { e.preventDefault(); s[last] = null; persist(); draw(); }
+    else if (e.key === 'z' || e.key === 'Z') { S[D.items[cur].file] = empty(); persist(); draw(); }
     else if (e.key === ' ') { e.preventDefault(); if (!hide) { hide = true; draw(); } }
   });
   window.addEventListener('keyup', (e) => { if (e.key === ' ') { hide = false; draw(); } });
 
-  /* ---------- 書き出し（COCO 形式・6 点）と再開 ---------- */
+  /* 書き出し（COCO 形式・4 点：L_tip, L_tail, R_tip, R_tail）と再開 */
   $('save').onclick = () => {
     const images = [], annotations = [];
     D.items.forEach((it, i) => {
-      const s = S[it.file] ?? (it.seed ? fromDraft(it) : null);
+      const s = S[it.file] ?? (it.seed ? fromSeed(it) : null);
       if (!s || s.status !== 'done') return;
       const kp = {}; for (const n of NAMES) kp[n] = [0, 0, 0];
-      for (const o of solve(s)) {
-        kp[o.side + '_tip'] = [...o.tip, 2]; kp[o.side + '_boot'] = [...o.boot, 2]; kp[o.side + '_tail'] = [...o.tail, 2];
-      }
+      for (const k of ['L', 'R']) if (s[k]) { kp[k + '_tip'] = [...s[k].a, 2]; kp[k + '_tail'] = [...s[k].b, 2]; }
       const vis = NAMES.map((n) => kp[n]).filter((p) => p[2] > 0);
       const xs = vis.map((p) => p[0]), ys = vis.map((p) => p[1]);
       const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
@@ -271,9 +223,9 @@
         num_keypoints: vis.length, bbox, area: bbox[2] * bbox[3], iscrowd: 0 });
     });
     const skipped = D.items.filter((it) => (S[it.file]?.status ?? it.seed?.status) === 'skip').map((it) => it.file);
-    const out = { info: { description: 'スキー板 6 点（ski-label.html・線を引く版で作成）', dataset: D.id || 'default', version: 2 },
-      categories: [{ id: 1, name: 'skis', keypoints: NAMES, skeleton: [[1, 2], [2, 3], [4, 5], [5, 6]] }],
-      images, annotations, skipped, progress2: S };
+    const out = { info: { description: 'スキー板 4 点（ski-label.html・線を引く版で作成）', dataset: D.id || 'default', version: 3 },
+      categories: [{ id: 1, name: 'skis', keypoints: NAMES, skeleton: [[1, 2], [3, 4]] }],
+      images, annotations, skipped, progress3: S };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' }));
     a.download = 'labels.json'; a.click();
@@ -281,7 +233,7 @@
   };
   $('load').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    try { const j = JSON.parse(await f.text()); if (!j.progress2) throw 0; S = j.progress2; persist(); load(cur); $('msg').textContent = '続きから再開します。'; }
+    try { const j = JSON.parse(await f.text()); if (!j.progress3) throw 0; S = j.progress3; persist(); load(cur); $('msg').textContent = '続きから再開します。'; }
     catch { $('msg').textContent = 'このファイルは読めませんでした（このページで書き出した labels.json を選んでください）。'; }
   };
   const first = D.items.findIndex((it) => (S[it.file]?.status ?? it.seed?.status ?? 'todo') === 'todo');
